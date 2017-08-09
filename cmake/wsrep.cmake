@@ -65,3 +65,6 @@ Then restart the build.
   SET(BUILD_SHARED_LIBS ${old_BUILD_SHARED_LIBS})
 ENDIF()
 ENDIF(NOT WITHOUT_SERVER)
+IF (NOT WIN32)
+  ADD_FEATURE_INFO(WSREP WITH_WSREP "WSREP replication API (to use, e.g. Galera Replication library)")
+ENDIF()

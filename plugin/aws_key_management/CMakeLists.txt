@@ -12,3 +12,5 @@ MYSQL_ADD_PLUGIN(aws_key_management
 IF(TARGET aws_key_management)
  USE_AWS_SDK_LIBS(aws_key_management kms)
 ENDIF()
+
+ADD_FEATURE_INFO(AWS_KEY_MANAGEMENT "ON" "AWS Encryption Key Management Plugin")

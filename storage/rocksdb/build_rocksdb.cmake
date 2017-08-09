@@ -75,9 +75,11 @@ check_lib(LZ4    LZ4)
 check_lib(BZip2  BZIP2)
 check_lib(snappy snappy) # rocksdb/cmake/modules/Findsnappy.cmake violates the convention
 check_lib(ZSTD   ZSTD ZDICT_trainFromBuffer)
+ADD_FEATURE_INFO(ROCKSDB_ZSTD HAVE_ROCKSDB_ZSTD "Zstandard Compression in the RocksDB storage engine")
 
 add_definitions(-DZLIB)
 list(APPEND THIRDPARTY_LIBS ${ZLIB_LIBRARY})
+ADD_FEATURE_INFO(ROCKSDB_ZLIB "ON" "zlib Compression in the RocksDB storage engine")
 
 if(CMAKE_SYSTEM_NAME MATCHES "Cygwin")
   add_definitions(-fno-builtin-memcmp -DCYGWIN)
