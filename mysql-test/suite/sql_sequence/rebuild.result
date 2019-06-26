@@ -130,6 +130,8 @@ proxies_priv
 roles_mapping
 rwlock_instances
 s1
+server_audit_filters
+server_audit_users
 servers
 session_account_connect_attrs
 session_connect_attrs

@@ -512,7 +512,7 @@ drop database mysqldump_test_db;
 # --default-character-set=xxx. However, we should dump in UTF8
 # if it is explicitly set.
 CREATE TABLE t1 (a  CHAR(10));
-INSERT INTO t1  VALUES (_latin1 'ƒ÷‹ﬂ');
+INSERT INTO t1  VALUES (_latin1 'ÔøΩÔøΩÔøΩÔøΩ');
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -567,7 +567,7 @@ CREATE TABLE `t1` (
 
 LOCK TABLES `t1` WRITE;
 /*!40000 ALTER TABLE `t1` DISABLE KEYS */;
-INSERT INTO `t1` VALUES ('éôö·');
+INSERT INTO `t1` VALUES ('ÔøΩÔøΩÔøΩÔøΩ');
 /*!40000 ALTER TABLE `t1` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -590,7 +590,7 @@ CREATE TABLE `t1` (
 
 LOCK TABLES `t1` WRITE;
 /*!40000 ALTER TABLE `t1` DISABLE KEYS */;
-INSERT INTO `t1` VALUES ('éôö·');
+INSERT INTO `t1` VALUES ('ÔøΩÔøΩÔøΩÔøΩ');
 /*!40000 ALTER TABLE `t1` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -1810,11 +1810,11 @@ create table t1 (a text character set utf8, b text character set latin1);
 insert t1 values (0x4F736E616272C3BC636B, 0x4BF66C6E);
 select * from t1;
 a	b
-Osnabr¸ck	Kˆln
+OsnabrÔøΩck	KÔøΩln
 test.t1: Records: 1  Deleted: 0  Skipped: 0  Warnings: 0
 select * from t1;
 a	b
-Osnabr¸ck	Kˆln
+OsnabrÔøΩck	KÔøΩln
 drop table t1;
 #
 # Bug#15328 Segmentation fault occurred if my.cnf is invalid for escape sequence
@@ -4043,14 +4043,14 @@ UNLOCK TABLES;
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO,MYSQL323' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
-DROP TABLE IF EXISTS `straﬂe`;
-CREATE TABLE `straﬂe` (
+DROP TABLE IF EXISTS `straÔøΩe`;
+CREATE TABLE `straÔøΩe` (
   `f1` int(11) DEFAULT NULL
 ) TYPE=MyISAM;
 
-LOCK TABLES `straﬂe` WRITE;
-/*!40000 ALTER TABLE `straﬂe` DISABLE KEYS */;
-/*!40000 ALTER TABLE `straﬂe` ENABLE KEYS */;
+LOCK TABLES `straÔøΩe` WRITE;
+/*!40000 ALTER TABLE `straÔøΩe` DISABLE KEYS */;
+/*!40000 ALTER TABLE `straÔøΩe` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -4445,8 +4445,8 @@ DROP DATABASE IF EXISTS mysqldump_test_db;
 # Create objects.
 CREATE DATABASE mysqldump_test_db;
 set names koi8r;
-CREATE VIEW mysqldump_test_db.v2 AS SELECT 1 AS ÀœÃœŒÀ¡1;
-CREATE VIEW mysqldump_test_db.v1 AS SELECT ÀœÃœŒÀ¡1 FROM mysqldump_test_db.v2;
+CREATE VIEW mysqldump_test_db.v2 AS SELECT 1 AS ÔøΩÔøΩÔøΩÔøΩÔøΩÔøΩÔøΩ1;
+CREATE VIEW mysqldump_test_db.v1 AS SELECT ÔøΩÔøΩÔøΩÔøΩÔøΩÔøΩÔøΩ1 FROM mysqldump_test_db.v2;
 set names latin1;
 
 # Dump mysqldump_test_db to bug30027.sql.
@@ -4630,7 +4630,7 @@ INSERT INTO t1 VALUES (1, 'ABC-–ê–ë–í', 'DEF-√Ç√É√Ñ'), (2, NULL, NULL);
 # error on multi-character ENCLOSED/ESCAPED BY
 # default '--default-charset' (binary):
 ##################################################
-1	ABC-·‚˜	DEF-¬√ƒ
+1	ABC-ÔøΩÔøΩÔøΩ	DEF-ÔøΩÔøΩÔøΩ
 2	\N	\N
 ##################################################
 TRUNCATE t2;
@@ -4652,7 +4652,7 @@ a	b	c
 2	NULL	NULL
 # latin1 (data corruption is expected):
 ##################################################
-1	ABC-???	DEF-¬√ƒ
+1	ABC-???	DEF-ÔøΩÔøΩÔøΩ
 2	\N	\N
 ##################################################
 TRUNCATE t2;
@@ -4664,7 +4664,7 @@ a	b	c
 2	NULL	NULL
 # koi8r (data corruption is expected):
 ##################################################
-1	ABC-·‚˜	DEF-???
+1	ABC-ÔøΩÔøΩÔøΩ	DEF-???
 2	\N	\N
 ##################################################
 TRUNCATE t2;
@@ -5311,7 +5311,7 @@ create table t1 (g GEOMETRY) CHARSET koi8r;
 create table t2 (g GEOMETRY) CHARSET koi8r;
 insert into t1 values (point(1,1)), (point(2,2));
 ##################################################
-\0\0\0\0\0\0\0\0\0\0\0\0\0?\0\0\0\0\0\0?
+\0\0\0\0\0\0\0\0\0\0\0\0\0ÔøΩ?\0\0\0\0\0\0ÔøΩ?
 \0\0\0\0\0\0\0\0\0\0\0\0\0\0@\0\0\0\0\0\0\0@
 ##################################################
 LOAD DATA INFILE 'MYSQLTEST_VARDIR/tmp/t1.txt' INTO TABLE t2 CHARACTER SET koi8r;
@@ -5902,6 +5902,73 @@ CREATE TABLE IF NOT EXISTS `slow_log` (
   `rows_affected` int(11) NOT NULL
 ) ENGINE=CSV DEFAULT CHARSET=utf8 COMMENT='Slow log';
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `innodb_index_stats`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `innodb_index_stats` (
+  `database_name` varchar(64) NOT NULL,
+  `table_name` varchar(199) NOT NULL,
+  `index_name` varchar(64) NOT NULL,
+  `last_update` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `stat_name` varchar(64) NOT NULL,
+  `stat_value` bigint(20) unsigned NOT NULL,
+  `sample_size` bigint(20) unsigned DEFAULT NULL,
+  `stat_description` varchar(1024) NOT NULL,
+  PRIMARY KEY (`database_name`,`table_name`,`index_name`,`stat_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin STATS_PERSISTENT=0;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `innodb_index_stats` WRITE;
+/*!40000 ALTER TABLE `innodb_index_stats` DISABLE KEYS */;
+/*!40000 ALTER TABLE `innodb_index_stats` ENABLE KEYS */;
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `innodb_table_stats`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `innodb_table_stats` (
+  `database_name` varchar(64) NOT NULL,
+  `table_name` varchar(199) NOT NULL,
+  `last_update` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `n_rows` bigint(20) unsigned NOT NULL,
+  `clustered_index_size` bigint(20) unsigned NOT NULL,
+  `sum_of_other_index_sizes` bigint(20) unsigned NOT NULL,
+  PRIMARY KEY (`database_name`,`table_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin STATS_PERSISTENT=0;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `innodb_table_stats` WRITE;
+/*!40000 ALTER TABLE `innodb_table_stats` DISABLE KEYS */;
+/*!40000 ALTER TABLE `innodb_table_stats` ENABLE KEYS */;
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `server_audit_filters`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_audit_filters` (
+  `filtername` char(80) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  `rule` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'true' CHECK (json_valid(`rule`)),
+  UNIQUE KEY `c_filtername` (`filtername`)
+) ENGINE=Aria DEFAULT CHARSET=latin1 PAGE_CHECKSUM=1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `server_audit_filters` WRITE;
+/*!40000 ALTER TABLE `server_audit_filters` DISABLE KEYS */;
+/*!40000 ALTER TABLE `server_audit_filters` ENABLE KEYS */;
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `server_audit_users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_audit_users` (
+  `host` char(60) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  `user` char(80) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  `filtername` char(80) NOT NULL DEFAULT '',
+  UNIQUE KEY `c_host_user` (`host`,`user`)
+) ENGINE=Aria DEFAULT CHARSET=latin1 PAGE_CHECKSUM=1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `server_audit_users` WRITE;
+/*!40000 ALTER TABLE `server_audit_users` DISABLE KEYS */;
+/*!40000 ALTER TABLE `server_audit_users` ENABLE KEYS */;
+UNLOCK TABLES;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE IF NOT EXISTS `transaction_registry` (
@@ -6007,6 +6074,73 @@ CREATE TABLE IF NOT EXISTS `slow_log` (
   `rows_affected` int(11) NOT NULL
 ) ENGINE=CSV DEFAULT CHARSET=utf8 COMMENT='Slow log';
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `innodb_index_stats`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `innodb_index_stats` (
+  `database_name` varchar(64) NOT NULL,
+  `table_name` varchar(199) NOT NULL,
+  `index_name` varchar(64) NOT NULL,
+  `last_update` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `stat_name` varchar(64) NOT NULL,
+  `stat_value` bigint(20) unsigned NOT NULL,
+  `sample_size` bigint(20) unsigned DEFAULT NULL,
+  `stat_description` varchar(1024) NOT NULL,
+  PRIMARY KEY (`database_name`,`table_name`,`index_name`,`stat_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin STATS_PERSISTENT=0;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `innodb_index_stats` WRITE;
+/*!40000 ALTER TABLE `innodb_index_stats` DISABLE KEYS */;
+/*!40000 ALTER TABLE `innodb_index_stats` ENABLE KEYS */;
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `innodb_table_stats`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `innodb_table_stats` (
+  `database_name` varchar(64) NOT NULL,
+  `table_name` varchar(199) NOT NULL,
+  `last_update` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `n_rows` bigint(20) unsigned NOT NULL,
+  `clustered_index_size` bigint(20) unsigned NOT NULL,
+  `sum_of_other_index_sizes` bigint(20) unsigned NOT NULL,
+  PRIMARY KEY (`database_name`,`table_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin STATS_PERSISTENT=0;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `innodb_table_stats` WRITE;
+/*!40000 ALTER TABLE `innodb_table_stats` DISABLE KEYS */;
+/*!40000 ALTER TABLE `innodb_table_stats` ENABLE KEYS */;
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `server_audit_filters`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_audit_filters` (
+  `filtername` char(80) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  `rule` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'true' CHECK (json_valid(`rule`)),
+  UNIQUE KEY `c_filtername` (`filtername`)
+) ENGINE=Aria DEFAULT CHARSET=latin1 PAGE_CHECKSUM=1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `server_audit_filters` WRITE;
+/*!40000 ALTER TABLE `server_audit_filters` DISABLE KEYS */;
+/*!40000 ALTER TABLE `server_audit_filters` ENABLE KEYS */;
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `server_audit_users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_audit_users` (
+  `host` char(60) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  `user` char(80) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  `filtername` char(80) NOT NULL DEFAULT '',
+  UNIQUE KEY `c_host_user` (`host`,`user`)
+) ENGINE=Aria DEFAULT CHARSET=latin1 PAGE_CHECKSUM=1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+LOCK TABLES `server_audit_users` WRITE;
+/*!40000 ALTER TABLE `server_audit_users` DISABLE KEYS */;
+/*!40000 ALTER TABLE `server_audit_users` ENABLE KEYS */;
+UNLOCK TABLES;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE IF NOT EXISTS `transaction_registry` (
