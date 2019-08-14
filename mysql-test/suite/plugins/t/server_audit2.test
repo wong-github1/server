@@ -1,4 +1,4 @@
-
+--source include/have_plugin_auth.inc
 --source include/not_embedded.inc
 
 if (!$SERVER_AUDIT2_SO) {
@@ -111,6 +111,7 @@ CREATE USER u1 IDENTIFIED BY 'pwd-123';
 GRANT ALL ON sa_db TO u2 IDENTIFIED BY "pwd-321";
 SET PASSWORD FOR u1 = PASSWORD('pwd 098');
 CREATE USER u3 IDENTIFIED BY '';
+ALTER USER u3 IDENTIFIED BY 'pwd-456';
 drop user u1, u2, u3;
 
 INSERT INTO mysql.server_audit_filters VALUES ('log_all','{}');
@@ -130,6 +131,12 @@ select 2;
 /*! select 2*/;
 /*comment*/ select 2;
 drop table t1;
+
+create procedure pr1() insert into test.t1 values ("foo", 42);
+create function fn1(i int) returns int deterministic return i+1;
+drop procedure pr1;
+drop function fn1;
+
 UPDATE mysql.server_audit_users SET filtername= 'ddl_dml' where host='%' and user='root';
 SET GLOBAL server_audit_reload_filters=ON;
 
@@ -138,6 +145,11 @@ insert into t1 values (1), (2);
 select * from t1;
 select 2;
 drop table t1;
+
+create procedure pr1() insert into test.t1 values ("foo", 42);
+create function fn1(i int) returns int deterministic return i+1;
+drop procedure pr1;
+drop function fn1;
 
 UPDATE mysql.server_audit_users SET filtername= 'query_dml' where host='%' and user='root';
 SET GLOBAL server_audit_reload_filters=ON;
@@ -150,6 +162,11 @@ select 2;
 /*! select 2*/;
 /*comment*/ select 2;
 drop table t1;
+
+create procedure pr1() insert into test.t1 values ("foo", 42);
+create function fn1(i int) returns int deterministic return i+1;
+drop procedure pr1;
+drop function fn1;
 
 UPDATE mysql.server_audit_users SET filtername= 'query_dcl' where host='%' and user='root';
 SET GLOBAL server_audit_reload_filters=ON;
@@ -172,6 +189,11 @@ select 2;
 /*comment*/ select 2;
 drop table t1;
 
+create procedure pr1() insert into test.t1 values ("foo", 42);
+create function fn1(i int) returns int deterministic return i+1;
+drop procedure pr1;
+drop function fn1;
+
 UPDATE mysql.server_audit_users SET filtername= 'dml_no_select' where host='%' and user='root';
 SET GLOBAL server_audit_reload_filters=ON;
 
@@ -181,12 +203,35 @@ select * from t1;
 select 2;
 drop table t1;
 
+create procedure pr1() insert into test.t1 values ("foo", 42);
+create function fn1(i int) returns int deterministic return i+1;
+drop procedure pr1;
+drop function fn1;
+
 set global server_audit_logging= off;
 set global server_audit_logging= on;
 
 UPDATE mysql.server_audit_users SET filtername= 'log_all' where host='%' and user='root';
 SET GLOBAL server_audit_reload_filters=ON;
 
+CREATE USER plug IDENTIFIED WITH 'test_plugin_server' AS 'plug_dest';
+CREATE USER plug_dest IDENTIFIED BY 'plug_dest_passwd';
+--sleep 2
+--replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
+--error ER_ACCESS_DENIED_ERROR : this should fail : no grant
+connect(plug_con,localhost,plug,plug_dest);
+--sleep 2
+GRANT PROXY ON plug_dest TO plug;
+--sleep 2
+connect(plug_con,localhost,plug,plug_dest);
+connection plug_con;
+select USER(),CURRENT_USER();
+connection default;
+disconnect plug_con;
+--sleep 2
+--sleep 2
+DROP USER plug;
+DROP USER plug_dest;
 set global server_audit_query_log_limit= 15;
 select (1), (2), (3), (4);
 select 'A', 'B', 'C', 'D';
@@ -230,7 +275,80 @@ UPDATE mysql.server_audit_users SET filtername= 'log_all' where host='%' and use
 SET GLOBAL server_audit_reload_filters=ON;
 SHOW STATUS LIKE "Server_audit_session_filter";
 
+#
+# MENT-65 Table filter
+#
+
+truncate mysql.server_audit_filters;
+CREATE  TABLE t1 (a INT, b VARCHAR(10));
+CREATE  TABLE test.t1 (a INT, b VARCHAR(10));
+INSERT INTO mysql.server_audit_filters VALUES ('sa_db', '{"log_tables": "sa_db.*"}');
+INSERT INTO mysql.server_audit_filters VALUES ('ignore_test_db', '{"ignore_tables": "test.*"}');
+INSERT INTO mysql.server_audit_filters VALUES ('sa_db_rw',      '{"log_tables": ["sa_db.*", {"table_event":["READ", "WRITE"]}]}');
+INSERT INTO mysql.server_audit_filters VALUES ('sa_db_rw_rev',  '{"table_event":["READ", "WRITE", {"log_tables": "sa_db.*"}]}');
+INSERT INTO mysql.server_audit_filters VALUES ('sa_db_rw_2',
+       '{"table_event":["READ", "WRITE", {"log_tables": "sa_db.t1"}, {"log_tables": "test.t1"}]}');
+INSERT INTO mysql.server_audit_filters VALUES ('sa_db_D', '{"log_databases": "sa_db"}');
+INSERT INTO mysql.server_audit_filters VALUES ('sa_nested',
+  '{"connect_event": ["CONNECT","DISCONNECT"],
+    "log_tables":[ "sa_db.*", {"table_event": ["WRITE","CREATE","DROP","RENAME","ALTER"],
+                           "query_event": "DML" }]}');
+
+UPDATE mysql.server_audit_users SET filtername= 'sa_db' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+select * from mysql.server_audit_users;
+
+UPDATE mysql.server_audit_users SET filtername= 'ignore_test_db' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+select * from test.t1;
+select * from mysql.server_audit_users;
+
+UPDATE mysql.server_audit_users SET filtername= 'sa_db_rw' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+select * from test.t1;
+select * from mysql.server_audit_users;
+
+UPDATE mysql.server_audit_users SET filtername= 'sa_db_rw_rev' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+select * from test.t1;
+select * from mysql.server_audit_users;
+
+UPDATE mysql.server_audit_users SET filtername= 'sa_db_rw_2' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+select * from test.t1;
+select * from mysql.server_audit_users;
+
+UPDATE mysql.server_audit_users SET filtername= 'sa_db_D' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+select * from test.t1;
+select * from mysql.server_audit_users;
+
+UPDATE mysql.server_audit_users SET filtername= 'sa_nested' where host='%' and user='root';
+SET GLOBAL server_audit_reload_filters=ON;
+select * from t1;
+--sleep 2
+connect (con1,localhost,root,,mysql);
+select * from test.t1;
+insert into sa_db.t1 values (1, 'one');
+connection default;
+--sleep 2
+disconnect con1;
+select * from mysql.server_audit_users;
+
+INSERT INTO mysql.server_audit_filters (filtername, rule)
+  VALUES ('test_tab_ignore', '{"connect_event": ["CONNECT","DISCONNECT"],
+      "log_tables":"test.*", "ignore_tables" : "mysql.*"}');
+--error 1
+SET GLOBAL server_audit_reload_filters=ON;
+
 drop database sa_db;
+drop table test.t1;
 
 set global server_audit_file_path='.';
 --replace_regex /\.[\\\/]/HOME_DIR\//

@@ -2683,6 +2683,15 @@ void mysqld_stmt_prepare(THD *thd, const char *packet, uint packet_length)
 
   if (stmt->prepare(packet, packet_length))
   {
+    /*
+       Prepare failed and stmt will be freed.
+       Now we have to save the query_string in the so the
+       audit plugin later gets the meaningful notification.
+    */
+    if (alloc_query(thd, stmt->query_string.str(), stmt->query_string.length()))
+    {
+      thd->set_query(0, 0);
+    }
     /* Statement map deletes statement on erase */
     thd->stmt_map.erase(stmt);
     thd->clear_last_stmt();
@@ -4182,6 +4191,19 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
     DBUG_RETURN(TRUE);
   }
 
+  /*
+    We'd like to have thd->query to be set to the actual query
+    after the function ends.
+    This value will be sent to audit plugins later.
+    As the statement is created, the query will be stored
+    in statement's arena. Normally the statement lives longer than
+    the end of this query, so we can just set thd->query_string to
+    be the stmt->query_string.
+    Though errors can result in statement to be freed. These cases
+    should be handled appropriately.
+  */
+  stmt_backup.query_string= thd->query_string;
+
   old_stmt_arena= thd->stmt_arena;
   thd->stmt_arena= this;
 
@@ -4436,11 +4458,34 @@ Prepared_statement::execute_loop(String *expanded_query,
   if (unlikely(state == Query_arena::STMT_ERROR))
   {
     my_message(last_errno, last_error, MYF(0));
+    /*
+      Execute failed.
+      Fill the thd->query to the audit plugin later gets
+      the meaningful notification.
+
+    */
+    thd->set_query_inner(query_string);
     return TRUE;
   }
 
   if (set_parameters(expanded_query, packet, packet_end))
+  {
+    /*
+      Execute failed.
+      Fill the thd->query to the audit plugin later gets
+      the meaningful notification.
+
+    */
+    thd->set_query_inner(query_string);
     return TRUE;
+#ifdef WITH_WSREP
+  if (thd->wsrep_delayed_BF_abort)
+  {
+    WSREP_DEBUG("delayed BF abort, quitting execute_loop, stmt: %d", id);
+    return TRUE;
+  }
+#endif /* WITH_WSREP */
+  }
 
 reexecute:
   // Make sure that reprepare() did not create any new Items.
@@ -4907,6 +4952,13 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
   if (open_cursor && lex->result && lex->result->check_simple_select())
   {
     DBUG_PRINT("info",("Cursor asked for not SELECT stmt"));
+    /*
+      Execute failed.
+      Fill the thd->query to the audit plugin later gets
+      the meaningful notification.
+
+    */
+    thd->set_query_inner(query_string);
     return TRUE;
   }
 
@@ -4939,7 +4991,16 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
 
   if (mysql_opt_change_db(thd, &stmt_db_name, &saved_cur_db_name, TRUE,
                           &cur_db_changed))
+  {
+    /*
+      Execute failed.
+      Fill the thd->query to the audit plugin later gets
+      the meaningful notification.
+
+    */
+    thd->set_query_inner(query_string);
     goto error;
+  }
 
   /* Allocate query. */
 
@@ -4956,6 +5017,12 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     expanded query was allocated in thd->mem_root.
   */
   stmt_backup.set_query_inner(thd->query_string);
+  /*
+    We also want to store the query tables list even after backup
+    so it's possible to filter prepared statements by used tables.
+  */
+  if (!thd->spcont)
+    stmt_backup.lex->query_tables= thd->lex->query_tables;
 
   /*
     At first execution of prepared statement we may perform logical

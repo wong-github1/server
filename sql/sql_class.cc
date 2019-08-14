@@ -667,6 +667,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
    wsrep_replicate_GTID(false),
    wsrep_ignore_table(false),
    wsrep_aborter(0),
+   wsrep_delayed_BF_abort(false),
 
 /* wsrep-lib */
    m_wsrep_next_trx_id(WSREP_UNDEFINED_TRX_ID),
@@ -4777,6 +4778,33 @@ extern "C" void thd_create_random_password(MYSQL_THD thd,
 }
 
 
+extern "C" const char *thd_priv_host(MYSQL_THD thd, size_t *length)
+{
+  const Security_context *sctx= thd->security_ctx;
+  if (!sctx)
+  {
+    *length= 0;
+    return NULL;
+  }
+  *length= strlen(sctx->priv_host);
+  return sctx->priv_host;
+}
+
+
+extern "C" const char *thd_priv_user(MYSQL_THD thd, size_t *length)
+{
+  const Security_context *sctx= thd->security_ctx;
+  if (!sctx)
+  {
+    *length= 0;
+    return NULL;
+  }
+  *length= strlen(sctx->priv_user);
+  return sctx->priv_user;
+}
+
+
+
 #ifdef INNODB_COMPATIBILITY_HOOKS
 
 /** open a table and add it to thd->open_tables
@@ -5346,6 +5374,33 @@ extern "C" size_t thd_deadlock_buf(MYSQL_THD thd, char **buf)
 }
 
 #endif // INNODB_COMPATIBILITY_HOOKS */
+
+
+/**
+  Query table list accessor.
+*/
+extern "C" size_t thd_query_table_list(MYSQL_THD thd,
+    MYSQL_CONST_LEX_STRING *db_table_names, size_t max_names)
+{
+  TABLE_LIST *tl= thd->lex->query_tables;
+  size_t n_names= 0;
+
+  while (tl)
+  {
+    if (tl->db.length == 0 && tl->db.str == empty_c_string)
+      continue;
+
+    if (max_names > n_names + 1)
+    {
+      db_table_names[n_names]= tl->db;
+      db_table_names[n_names+1]= tl->table_name;
+    }
+    n_names+= 2;
+    tl= tl->next_global;
+  }
+  return n_names;
+}
+
 
 /****************************************************************************
   Handling of statement states in functions and triggers.
