@@ -4881,15 +4881,9 @@ class BackupStages {
 		}
 
 		bool stage_block_ddl(CorruptedPages &corrupted_pages) {
-			if (!opt_no_lock) {
-				if (!lock_for_backup_stage_block_ddl(m_bs_con)) {
-					msg("BACKUP STAGE BLOCK_DDL");
-					return false;
-				}
-				if (have_galera_enabled)
-				{
-					xb_mysql_query(mysql_connection, "SET SESSION wsrep_sync_wait=0", false);
-				}
+			if (!opt_no_lock && !lock_for_backup_stage_block_ddl(m_bs_con)) {
+				msg("BACKUP STAGE BLOCK_DDL");
+				return false;
 			}
 
 			ulonglong server_lsn_after_lock = get_current_lsn(mysql_connection);
