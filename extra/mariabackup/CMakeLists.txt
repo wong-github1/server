@@ -75,7 +75,6 @@ MYSQL_ADD_EXECUTABLE(mariabackup
   backup_mysql.cc
   backup_copy.cc
   encryption_plugin.cc
-  ${PROJECT_BINARY_DIR}/sql/sql_builtin.cc
   aria_backup_client.cc
   thread_pool.cc
   ddl_log.cc
@@ -94,7 +93,7 @@ SET_TARGET_PROPERTIES(mariabackup PROPERTIES ENABLE_EXPORTS TRUE)
 ADD_SUBDIRECTORY(crc)
 
 
-TARGET_LINK_LIBRARIES(mariabackup sql sql_builtins crc aria)
+TARGET_LINK_LIBRARIES(mariabackup sql crc aria)
 
 IF(NOT HAVE_SYSTEM_REGEX)
   TARGET_LINK_LIBRARIES(mariabackup pcreposix)
