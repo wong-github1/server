@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2014, 2020, MariaDB Corporation.
+Copyright (c) 2014, 2022, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -639,6 +639,7 @@ trx_undo_header_create(
 	mach_write_to_2(log_hdr + TRX_UNDO_NEEDS_PURGE, 1);
 
 	mach_write_to_8(log_hdr + TRX_UNDO_TRX_ID, trx_id);
+	memset(log_hdr + TRX_UNDO_TRX_NO, 0, 8);
 	mach_write_to_2(log_hdr + TRX_UNDO_LOG_START, new_free);
 
 	mach_write_to_1(log_hdr + TRX_UNDO_XID_EXISTS, FALSE);
