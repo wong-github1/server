@@ -1600,6 +1600,9 @@ static void end_ssl();
 
 
 #ifndef EMBEDDED_LIBRARY
+extern Atomic_counter<uint32_t> local_connection_thread_count;
+
+
 /****************************************************************************
 ** Code to end mysqld
 ****************************************************************************/
@@ -1861,7 +1864,9 @@ static void close_connections(void)
 
   /* Kill phase 2 */
   server_threads.iterate(kill_thread_phase_2);
-  for (uint64 i= 0; THD_count::value(); i++)
+  for (uint64 i= 0;
+       THD_count::value() > local_connection_thread_count;
+       i++)
   {
     /*
       This time the warnings are emitted within the loop to provide a
@@ -5311,12 +5316,16 @@ static int init_server_components()
 
   init_global_table_stats();
   init_global_index_stats();
+  init_update_queries();
 
   /* Allow storage engine to give real error messages */
   if (unlikely(ha_init_errors()))
     DBUG_RETURN(1);
 
   tc_log= 0; // ha_initialize_handlerton() needs that
+
+  //if (ddl_log_initialize())
+  //  unireg_abort(1);
 
   if (plugin_init(&remaining_argc, remaining_argv,
                   (opt_noacl ? PLUGIN_INIT_SKIP_PLUGIN_TABLE : 0) |
@@ -5553,7 +5562,6 @@ static int init_server_components()
   ft_init_stopwords();
 
   init_max_user_conn();
-  init_update_queries();
   init_global_user_stats();
   init_global_client_stats();
   if (!opt_bootstrap)
