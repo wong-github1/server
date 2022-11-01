@@ -20741,7 +20741,6 @@ TABLE* innobase_init_vc_templ(dict_table_t* table)
 	DBUG_ENTER("innobase_init_vc_templ");
 
 	ut_ad(table->vc_templ == NULL);
-	table->vc_templ = UT_NEW_NOKEY(dict_vcol_templ_t());
 
 	TABLE	*mysql_table= innodb_find_table_for_vc(current_thd, table);
 
@@ -20750,8 +20749,11 @@ TABLE* innobase_init_vc_templ(dict_table_t* table)
 		DBUG_RETURN(NULL);
 	}
 
+	dict_vcol_templ_t* vc_templ = UT_NEW_NOKEY(dict_vcol_templ_t());
+
 	mutex_enter(&dict_sys.mutex);
-	innobase_build_v_templ(mysql_table, table, table->vc_templ, NULL, true);
+	table->vc_templ = vc_templ;
+	innobase_build_v_templ(mysql_table, table, vc_templ, nullptr, true);
 	mutex_exit(&dict_sys.mutex);
 	DBUG_RETURN(mysql_table);
 }
