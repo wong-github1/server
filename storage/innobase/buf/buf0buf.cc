@@ -4109,7 +4109,7 @@ static void buf_defer_drop_ahi(buf_block_t *block, mtr_memo_type_t fix_type)
     break;
   default:
     ut_ad(fix_type == MTR_MEMO_PAGE_X_FIX);
-    btr_search_drop_page_hash_index(block);
+    btr_search_drop_page_hash_index(block, false);
   }
 }
 #endif /* BTR_CUR_HASH_ADAPT */
@@ -5619,8 +5619,8 @@ loop:
 		}
 
 #ifdef BTR_CUR_HASH_ADAPT
-		if (UNIV_LIKELY_NULL(drop_hash_entry)) {
-			btr_search_drop_page_hash_index(block);
+		if (drop_hash_entry) {
+			btr_search_drop_page_hash_index(block, false);
 		}
 #endif /* BTR_CUR_HASH_ADAPT */
 
