@@ -1206,6 +1206,19 @@ protected:
 #endif
 
 
+class Create_func_json_normalize : public Create_func_arg1
+{
+public:
+  virtual Item *create_1_arg(THD *thd, Item *arg1);
+
+  static Create_func_json_normalize s_singleton;
+
+protected:
+  Create_func_json_normalize() {}
+  virtual ~Create_func_json_normalize() {}
+};
+
+
 #ifdef HAVE_SPATIAL
 class Create_func_geometry_from_json : public Create_native_func
 {
@@ -1518,6 +1531,19 @@ class Create_func_mbr_intersects : public Create_func_arg2
 };
 
 
+class Create_func_json_overlaps: public Create_func_arg2
+{
+public:
+  virtual Item *create_2_arg(THD *thd, Item *arg1, Item *arg2);
+
+  static Create_func_json_overlaps s_singleton;
+
+protected:
+  Create_func_json_overlaps() {}
+  virtual ~Create_func_json_overlaps() {}
+};
+
+
 class Create_func_intersects : public Create_func_arg2
 {
 public:
@@ -1704,6 +1730,18 @@ public:
 protected:
   Create_func_json_exists() {}
   virtual ~Create_func_json_exists() {}
+};
+
+class Create_func_json_schema_valid: public Create_func_arg2
+{
+public:
+  virtual Item *create_2_arg(THD *thd, Item *arg1, Item *arg2);
+
+  static Create_func_json_schema_valid s_singleton;
+
+protected:
+  Create_func_json_schema_valid() {}
+  virtual ~Create_func_json_schema_valid() {}
 };
 
 
@@ -5218,6 +5256,15 @@ Create_func_json_equals::create_2_arg(THD *thd, Item *arg1, Item *arg2)
   return new (thd->mem_root) Item_func_json_equals(thd, arg1, arg2);
 }
 
+Create_func_json_normalize Create_func_json_normalize::s_singleton;
+
+Item*
+Create_func_json_normalize::create_1_arg(THD *thd, Item *arg1)
+{
+  status_var_increment(thd->status_var.feature_json);
+  return new (thd->mem_root) Item_func_json_normalize(thd, arg1);
+}
+
 
 Create_func_json_exists Create_func_json_exists::s_singleton;
 
@@ -5774,6 +5821,16 @@ Create_func_json_search::create_native(THD *thd, LEX_CSTRING *name,
 }
 
 
+Create_func_json_overlaps Create_func_json_overlaps::s_singleton;
+
+Item*
+Create_func_json_overlaps::create_2_arg(THD *thd, Item *arg1, Item *arg2)
+{
+  status_var_increment(thd->status_var.feature_json);
+  return new (thd->mem_root) Item_func_json_overlaps(thd, arg1, arg2);
+}
+
+
 Create_func_last_insert_id Create_func_last_insert_id::s_singleton;
 
 Item*
@@ -5808,6 +5865,15 @@ Create_func_last_insert_id::create_native(THD *thd, LEX_CSTRING *name,
   }
 
   return func;
+}
+
+Create_func_json_schema_valid Create_func_json_schema_valid::s_singleton;
+
+Item*
+Create_func_json_schema_valid::create_2_arg(THD *thd, Item *arg1, Item *arg2)
+{
+  status_var_increment(thd->status_var.feature_json);
+  return new (thd->mem_root) Item_func_json_schema_valid(thd, arg1, arg2);
 }
 
 
@@ -7318,11 +7384,14 @@ static Native_func_registry func_array[] =
   { { STRING_WITH_LEN("JSON_MERGE") }, BUILDER(Create_func_json_merge)},
   { { STRING_WITH_LEN("JSON_MERGE_PATCH") }, BUILDER(Create_func_json_merge_patch)},
   { { STRING_WITH_LEN("JSON_MERGE_PRESERVE") }, BUILDER(Create_func_json_merge)},
+  { { STRING_WITH_LEN("JSON_NORMALIZE") }, BUILDER(Create_func_json_normalize)},
   { { STRING_WITH_LEN("JSON_QUERY") }, BUILDER(Create_func_json_query)},
   { { STRING_WITH_LEN("JSON_QUOTE") }, BUILDER(Create_func_json_quote)},
   { { STRING_WITH_LEN("JSON_OBJECT") }, BUILDER(Create_func_json_object)},
+  { { STRING_WITH_LEN("JSON_OVERLAPS") }, BUILDER(Create_func_json_overlaps)},
   { { STRING_WITH_LEN("JSON_REMOVE") }, BUILDER(Create_func_json_remove)},
   { { STRING_WITH_LEN("JSON_REPLACE") }, BUILDER(Create_func_json_replace)},
+  { { STRING_WITH_LEN("JSON_SCHEMA_VALID") }, BUILDER(Create_func_json_schema_valid)},
   { { STRING_WITH_LEN("JSON_SET") }, BUILDER(Create_func_json_set)},
   { { STRING_WITH_LEN("JSON_SEARCH") }, BUILDER(Create_func_json_search)},
   { { STRING_WITH_LEN("JSON_TYPE") }, BUILDER(Create_func_json_type)},

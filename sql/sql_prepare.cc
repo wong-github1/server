@@ -6302,11 +6302,12 @@ extern "C" int execute_sql_command(const char *command,
         }
         rows= rows->next;
       }
-      if (p.first_data)
-      {
+    }
+    if (p.first_data)
+    {
+      if (p.alloc)
         free_root(p.alloc, MYF(0));
-        my_free(p.first_data);
-      }
+      my_free(p.first_data);
     }
   }
 
