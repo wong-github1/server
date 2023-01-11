@@ -2,8 +2,6 @@
 #define XTRABACKUP_BACKUP_MYSQL_H
 
 #include <mysql.h>
-#include <string>
-#include <unordered_set>
 
 /* mysql flavor and version */
 enum mysql_flavor_t { FLAVOR_UNKNOWN, FLAVOR_MYSQL,
@@ -13,6 +11,7 @@ extern unsigned long mysql_server_version;
 
 /* server capabilities */
 extern bool have_changed_page_bitmaps;
+extern bool have_backup_locks;
 extern bool have_lock_wait_timeout;
 extern bool have_galera_enabled;
 extern bool have_flush_engine_logs;
@@ -79,21 +78,7 @@ bool
 lock_binlog_maybe(MYSQL *connection);
 
 bool
-lock_for_backup_stage_start(MYSQL *connection);
-
-bool
-lock_for_backup_stage_flush(MYSQL *connection);
-
-bool
-lock_for_backup_stage_block_ddl(MYSQL *connection);
-
-bool
-lock_for_backup_stage_commit(MYSQL *connection);
-
-bool backup_lock(MYSQL *con, const char *table_name);
-bool backup_unlock(MYSQL *con);
-
-std::unordered_set<std::string> get_tables_in_use(MYSQL *con);
+lock_tables(MYSQL *connection);
 
 bool
 wait_for_safe_slave(MYSQL *connection);
@@ -104,6 +89,5 @@ write_galera_info(MYSQL *connection);
 bool
 write_slave_info(MYSQL *connection);
 
-ulonglong get_current_lsn(MYSQL *connection);
 
 #endif

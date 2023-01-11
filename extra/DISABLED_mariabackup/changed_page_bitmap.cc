@@ -455,7 +455,7 @@ log_online_open_bitmap_file_read_only(
 	bitmap_file->size = os_file_get_size(bitmap_file->file);
 	bitmap_file->offset = 0;
 
-#ifdef __linux__
+#ifdef UNIV_LINUX
 	posix_fadvise(bitmap_file->file, 0, 0, POSIX_FADV_SEQUENTIAL);
 	posix_fadvise(bitmap_file->file, 0, 0, POSIX_FADV_NOREUSE);
 #endif

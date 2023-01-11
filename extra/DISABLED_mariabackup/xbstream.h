@@ -29,7 +29,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1335  USA
 /* Chunk flags */
 /* Chunk can be ignored if unknown version/format */
 #define XB_STREAM_FLAG_IGNORABLE 0x01
-#define XB_STREAM_FLAG_REWRITE   0x02
 
 /* Magic + flags + type + path len */
 #define CHUNK_HEADER_CONSTANT_LEN ((sizeof(XB_STREAM_CHUNK_MAGIC) - 1) + \
@@ -49,21 +48,18 @@ typedef enum {
 /************************************************************************
 Write interface. */
 
-typedef ssize_t xb_stream_write_callback(
+typedef ssize_t xb_stream_write_callback(xb_wstream_file_t *file,
 					 void *userdata,
 					 const void *buf, size_t len);
 
-xb_wstream_t *xb_stream_write_new(
-	xb_stream_write_callback *write_callback, void *user_data);
+xb_wstream_t *xb_stream_write_new(void);
+
 xb_wstream_file_t *xb_stream_write_open(xb_wstream_t *stream, const char *path,
-					const MY_STAT *mystat, bool rewrite);
+					MY_STAT *mystat, void *userdata,
+					xb_stream_write_callback *onwrite);
 
 int xb_stream_write_data(xb_wstream_file_t *file, const void *buf, size_t len);
-int xb_stream_write_seek_set(xb_wstream_file_t *file, my_off_t offset);
-int xb_stream_write_remove(xb_wstream_t *stream, const char *path);
-int
-xb_stream_write_rename(
-	xb_wstream_t *stream, const char *old_path, const char *new_path);
+
 int xb_stream_write_close(xb_wstream_file_t *file);
 
 int xb_stream_write_done(xb_wstream_t *stream);
@@ -80,9 +76,6 @@ typedef enum {
 typedef enum {
 	XB_CHUNK_TYPE_UNKNOWN = '\0',
 	XB_CHUNK_TYPE_PAYLOAD = 'P',
-	XB_CHUNK_TYPE_RENAME = 'R',
-	XB_CHUNK_TYPE_REMOVE = 'D',
-	XB_CHUNK_TYPE_SEEK = 'S',
 	XB_CHUNK_TYPE_EOF = 'E'
 } xb_chunk_type_t;
 
