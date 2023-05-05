@@ -23477,7 +23477,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
         // if access type is ALL, evaluate the second phase -- usually ALL is slow, therefore
         // order by is better with an index ...
         // for other cases skip the second phase ...
-        if (tab->type != JT_ALL)
+        if ((tab->type != JT_ALL) && (tab->type != JT_NEXT))
           skip_reconsidering_for_order_by = true;
       }
     }
