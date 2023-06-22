@@ -1404,7 +1404,12 @@ get_options(int *argc,char ***argv)
       }
       tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                               MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-      my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
+      if (my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0)) == MY_FILE_ERROR)
+      {
+        fprintf(stderr,"%s: Could not read create file\n", my_progname);
+        my_free(tmp_string);
+        exit(1);
+      }
       tmp_string[sbuf.st_size]= '\0';
       my_close(data_file,MYF(0));
       parse_delimiter(tmp_string, &create_statements, delimiter[0]);
@@ -1431,7 +1436,12 @@ get_options(int *argc,char ***argv)
       }
       tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                                     MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-      my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
+      if (my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0)) == MY_FILE_ERROR)
+      {
+        fprintf(stderr,"%s: Could not read query supplied file\n", my_progname);
+        my_free(tmp_string);
+        exit(1);
+      }
       tmp_string[sbuf.st_size]= '\0';
       my_close(data_file,MYF(0));
       if (user_supplied_query)
@@ -1462,7 +1472,12 @@ get_options(int *argc,char ***argv)
     }
     tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                                   MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-    my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
+    if (my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0)) == MY_FILE_ERROR)
+    {
+      fprintf(stderr,"%s: Could not read query supplied file\n", my_progname);
+      my_free(tmp_string);
+      exit(1);
+    }
     tmp_string[sbuf.st_size]= '\0';
     my_close(data_file,MYF(0));
     if (user_supplied_pre_statements)
@@ -1493,7 +1508,12 @@ get_options(int *argc,char ***argv)
     }
     tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                                   MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-    my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
+    if (my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0)) == MY_FILE_ERROR)
+    {
+      fprintf(stderr,"%s: Could not read query supplied file\n", my_progname);
+      my_free(tmp_string);
+      exit(1);
+    }
     tmp_string[sbuf.st_size]= '\0';
     my_close(data_file,MYF(0));
     if (user_supplied_post_statements)

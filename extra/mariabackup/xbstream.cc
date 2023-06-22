@@ -221,7 +221,7 @@ int
 stream_one_file(File file, xb_wstream_file_t *xbfile)
 {
 	uchar	*buf;
-	ssize_t	bytes;
+	size_t	bytes;
 	my_off_t	offset;
 
 	posix_fadvise(file, 0, 0, POSIX_FADV_SEQUENTIAL);
@@ -229,8 +229,8 @@ stream_one_file(File file, xb_wstream_file_t *xbfile)
 
 	buf = (uchar*)(my_malloc(XBSTREAM_BUFFER_SIZE, MYF(MY_FAE)));
 
-	while ((bytes = (ssize_t)my_read(file, buf, XBSTREAM_BUFFER_SIZE,
-				MYF(MY_WME))) > 0) {
+	while ((bytes= my_read(file, buf, XBSTREAM_BUFFER_SIZE,
+				MYF(MY_WME))) != MY_FILE_ERROR && bytes > 0) {
 		if (xb_stream_write_data(xbfile, buf, bytes)) {
 			msg("%s: xb_stream_write_data() failed.",
 			    my_progname);
@@ -245,11 +245,7 @@ stream_one_file(File file, xb_wstream_file_t *xbfile)
 
 	my_free(buf);
 
-	if (bytes < 0) {
-		return 1;
-	}
-
-	return 0;
+	return (bytes == MY_FILE_ERROR) ? 1 : 0;
 }
 
 static

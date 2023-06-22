@@ -69,7 +69,7 @@ static inline void output_core_info()
   if ((fd= my_open("/proc/self/limits", O_RDONLY, MYF(0))) >= 0)
   {
     my_safe_printf_stderr("Resource Limits:\n");
-    while ((len= my_read(fd, (uchar*)buff, sizeof(buff),  MYF(0))) > 0)
+    while ((len= my_read(fd, (uchar*)buff, sizeof(buff), MYF(0))) != MY_FILE_ERROR && len > 0)
     {
       my_write_stderr(buff, len);
     }

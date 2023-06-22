@@ -992,8 +992,7 @@ int n;
     return 0;
 
   /* Read in new stuff. */
-  if ((i=(int) my_read(fd, (uchar*) buffer + bufbytes,
-                       (size_t) bufread, MYF(MY_WME))) < 0)
+  if (my_read(fd, (uchar*) buffer + bufbytes, (size_t) bufread, MYF(MY_WME)) == MY_FILE_ERROR)
     return -1;
 
   /* Kludge to pretend every nonempty file ends with a newline. */

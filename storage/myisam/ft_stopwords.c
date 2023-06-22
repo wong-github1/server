@@ -92,6 +92,8 @@ int ft_init_stopwords()
     if (!(start=buffer=my_malloc(len+1, MYF(MY_WME))))
       goto err0;
     len=my_read(fd, buffer, len, MYF(MY_WME));
+    if (len == MY_FILE_ERROR)
+      goto err1;
     end=start+len;
     while (ft_simple_get_word(ft_stopword_cs, &start, end, &w, TRUE))
     {
