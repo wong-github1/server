@@ -61,6 +61,19 @@ public:
 };
 
 
+class Item_func_json_equals: public Item_bool_func
+{
+public:
+  Item_func_json_equals(THD *thd, Item *a, Item *b):
+    Item_bool_func(thd, a, b) {}
+  const char *func_name() const { return "json_equals"; }
+  bool fix_length_and_dec() override;
+  Item *get_copy(THD *thd) override
+  { return get_item_copy<Item_func_json_equals>(thd, this); }
+  longlong val_int() override;
+};
+
+
 class Item_func_json_exists: public Item_bool_func
 {
 protected:
