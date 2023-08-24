@@ -1125,6 +1125,8 @@ dict_index_t *dict_index_t::clone_if_needed()
 {
   if (!search_info->ref_count)
     return this;
+ 
+  new (&table->autoinc_mutex) std::mutex();
   dict_index_t *prev= UT_LIST_GET_PREV(indexes, this);
 
   UT_LIST_REMOVE(table->indexes, this);
@@ -1704,6 +1706,7 @@ dict_table_change_id_in_cache(
 @param[in]	keep	whether to keep (not free) the object */
 void dict_sys_t::remove(dict_table_t* table, bool lru, bool keep)
 {
+	new (&table->autoinc_mutex) std::mutex();
 	dict_foreign_t*	foreign;
 	dict_index_t*	index;
 
@@ -2015,6 +2018,7 @@ dict_index_remove_from_cache_low(
 	zero. See also: dict_table_can_be_evicted() */
 
 	if (index->n_ahi_pages()) {
+		new (&table->autoinc_mutex) std::mutex();
 		index->set_freed();
 		UT_LIST_ADD_LAST(table->freed_indexes, index);
 		return;
