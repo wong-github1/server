@@ -2903,9 +2903,14 @@ SORT_FIELD_ATTR::pack_sort_string(uchar *to, const Binary_string *str,
   length= (uint32) str->length();
 
   if (length + suffix_length <= original_length)
+  {
     data_length= length;
+  }
   else
+  {
     data_length= original_length - suffix_length;
+    current_thd->num_of_strings_sorted_on_truncated_length++;
+  }
 
   // length stored in lowendian form
   store_key_part_length(data_length + suffix_length, to, length_bytes);
