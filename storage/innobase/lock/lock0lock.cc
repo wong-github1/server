@@ -6536,6 +6536,10 @@ DeadlockChecker::start_print()
 
 	rewind(lock_latest_err_file);
 	ut_print_timestamp(lock_latest_err_file);
+	if (slave_retries_file.acquire()) {
+		ut_print_timestamp(slave_retries_file.get());
+		slave_retries_file.release();
+	}
 
 	if (srv_print_all_deadlocks) {
 		ib::info() << "Transactions deadlock detected, dumping"
@@ -6549,6 +6553,10 @@ void
 DeadlockChecker::print(const char* msg)
 {
 	fputs(msg, lock_latest_err_file);
+	if (slave_retries_file.acquire()) {
+		fputs(msg, slave_retries_file.get());
+		slave_retries_file.release();
+	}
 
 	if (srv_print_all_deadlocks) {
 		ib::info() << msg;
@@ -6579,6 +6587,12 @@ DeadlockChecker::print(const trx_t* trx, ulint max_query_len)
 	trx_print_low(lock_latest_err_file, trx, max_query_len,
 		      n_rec_locks, n_trx_locks, heap_size);
 
+	if (slave_retries_file.acquire()) {
+		trx_print_low(slave_retries_file.get(), trx, 3000, n_rec_locks,
+			      n_trx_locks, heap_size);
+		slave_retries_file.release();
+	}
+
 	if (srv_print_all_deadlocks) {
 		trx_print_low(stderr, trx, max_query_len,
 			      n_rec_locks, n_trx_locks, heap_size);
@@ -6601,6 +6615,10 @@ DeadlockChecker::print(const lock_t* lock)
 		mtr_t mtr;
 		lock_rec_print(lock_latest_err_file, lock, mtr);
 
+		if (slave_retries_file.acquire()) {
+			lock_rec_print(slave_retries_file.get(), lock, mtr);
+			slave_retries_file.release();
+		}
 		if (srv_print_all_deadlocks) {
 			lock_rec_print(stderr, lock, mtr);
 		}
@@ -6611,6 +6629,10 @@ DeadlockChecker::print(const lock_t* lock)
 	} else {
 		lock_table_print(lock_latest_err_file, lock);
 
+		if (slave_retries_file.acquire()) {
+			lock_table_print(slave_retries_file.get(), lock);
+			slave_retries_file.release();
+		}
 		if (srv_print_all_deadlocks) {
 			lock_table_print(stderr, lock);
 		}
