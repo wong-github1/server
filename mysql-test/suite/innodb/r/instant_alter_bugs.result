@@ -207,7 +207,6 @@ DROP TABLE t1;
 # MDEV-23801 Assertion index->table->instant... failed
 #            in btr_pcur_store_position()
 #
-SET @save_frequency = @@GLOBAL.innodb_purge_rseg_truncate_frequency;
 SET GLOBAL innodb_purge_rseg_truncate_frequency = 1;
 CREATE TABLE t (
 pk int auto_increment,

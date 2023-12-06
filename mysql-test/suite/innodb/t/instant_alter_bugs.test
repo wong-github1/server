@@ -214,7 +214,6 @@ DROP TABLE t1;
 --echo #            in btr_pcur_store_position()
 --echo #
 
-SET @save_frequency = @@GLOBAL.innodb_purge_rseg_truncate_frequency;
 SET GLOBAL innodb_purge_rseg_truncate_frequency = 1;
 
 CREATE TABLE t (
