@@ -376,15 +376,19 @@ void btr_search_disable()
 {
 	dict_table_t*	table;
 
-	mutex_enter(&dict_sys.mutex);
+  mutex_enter(&dict_sys.mutex);
+  ulonglong start_time= microsecond_interval_timer();
 
 	btr_search_x_lock_all();
 
-	if (!btr_search_enabled) {
-		mutex_exit(&dict_sys.mutex);
-		btr_search_x_unlock_all();
-		return;
-	}
+  if (!btr_search_enabled)
+  {
+    mutex_exit(&dict_sys.mutex);
+    MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_DICT_MUTEX_HOLD_TIME_MICROSECOND, start_time);
+    btr_search_x_unlock_all();
+    return;
+  }
 
 	btr_search_enabled = false;
 
@@ -402,7 +406,9 @@ void btr_search_disable()
 		btr_search_disable_ref_count(table);
 	}
 
-	mutex_exit(&dict_sys.mutex);
+  mutex_exit(&dict_sys.mutex);
+  MONITOR_INC_TIME_IN_MICRO_SECS(
+      MONITOR_ADAPTIVE_HASH_DICT_MUTEX_HOLD_TIME_MICROSECOND, start_time);
 
 	/* Set all block->index = NULL. */
 	buf_pool_clear_hash_index();
@@ -422,14 +428,24 @@ void btr_search_disable()
 @param resize whether buf_pool_resize() is the caller */
 void btr_search_enable(bool resize)
 {
-	if (!resize) {
-		buf_pool_mutex_enter_all();
-		if (srv_buf_pool_old_size != srv_buf_pool_size) {
-			buf_pool_mutex_exit_all();
-			return;
-		}
-		buf_pool_mutex_exit_all();
-	}
+  if (!resize)
+  {
+    buf_pool_mutex_enter_all();
+    ulonglong start_time= microsecond_interval_timer();
+
+    if (srv_buf_pool_old_size != srv_buf_pool_size)
+    {
+      buf_pool_mutex_exit_all();
+      MONITOR_INC_TIME_IN_MICRO_SECS(
+          MONITOR_ADAPTIVE_HASH_BUFFERPOOL_MUTEX_HOLD_TIME_MICROSECOND,
+          start_time);
+      return;
+    }
+    buf_pool_mutex_exit_all();
+    MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_BUFFERPOOL_MUTEX_HOLD_TIME_MICROSECOND,
+        start_time);
+  }
 
 	ulint hash_size = buf_pool_get_curr_size() / sizeof(void *) / 64;
 	btr_search_x_lock_all();
@@ -658,6 +674,7 @@ btr_search_update_hash_ref(
 				  RW_LOCK_FLAG_X | RW_LOCK_FLAG_S));
 	ut_ad(page_align(btr_cur_get_rec(cursor)) == block->frame);
 	ut_ad(page_is_leaf(block->frame));
+  ulonglong start_time= microsecond_interval_timer();
 	assert_block_ahi_valid(block);
 
 	dict_index_t* index = block->index;
@@ -709,6 +726,9 @@ btr_search_update_hash_ref(
 				   block, rec);
 
 		MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_ADDED);
+    MONITOR_INC_TIME_IN_MICRO_SECS(
+          MONITOR_ADAPTIVE_HASH_ADD_ROW_TIME_MICROSECOND,
+          start_time);
 	}
 
 func_exit:
@@ -1088,6 +1108,7 @@ void btr_search_drop_page_hash_index(buf_block_t* block,
 	rw_lock_t*		latch;
 
 retry:
+  ulonglong drop_index_start_time= microsecond_interval_timer();
 	/* This debug check uses a dirty read that could theoretically cause
 	false positives while buf_pool_clear_hash_index() is executing. */
 	assert_block_ahi_valid(block);
@@ -1257,7 +1278,9 @@ next_rec:
 
 	MONITOR_INC(MONITOR_ADAPTIVE_HASH_PAGE_REMOVED);
 	MONITOR_INC_VALUE(MONITOR_ADAPTIVE_HASH_ROW_REMOVED, n_cached);
-
+  MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_REMOVE_PAGE_TIME_MICROSECOND,
+        drop_index_start_time);
 cleanup:
 	assert_block_ahi_valid(block);
 	rw_lock_x_unlock(latch);
@@ -1346,6 +1369,8 @@ btr_search_build_page_hash_index(
 	if (!btr_search_enabled) {
 		return;
 	}
+
+  ulonglong start_time= microsecond_interval_timer();
 
 	rec_offs_init(offsets_);
 	ut_ad(ahi_latch == btr_get_search_latch(index));
@@ -1508,6 +1533,12 @@ btr_search_build_page_hash_index(
 
 	MONITOR_INC(MONITOR_ADAPTIVE_HASH_PAGE_ADDED);
 	MONITOR_INC_VALUE(MONITOR_ADAPTIVE_HASH_ROW_ADDED, n_cached);
+  MONITOR_INC_TIME_IN_MICRO_SECS(
+          MONITOR_ADAPTIVE_HASH_ADD_ROW_TIME_MICROSECOND,
+          start_time);
+  MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_ADD_PAGE_TIME_MICROSECOND,
+        start_time);
 exit_func:
 	assert_block_ahi_valid(block);
 	rw_lock_x_unlock(ahi_latch);
@@ -1661,6 +1692,8 @@ void btr_search_update_hash_on_delete(btr_cur_t* cursor)
 		return;
 	}
 
+  ulonglong start_time= microsecond_interval_timer();
+
 	block = btr_cur_get_block(cursor);
 
 	ut_ad(rw_lock_own(&(block->lock), RW_LOCK_X));
@@ -1706,6 +1739,9 @@ void btr_search_update_hash_on_delete(btr_cur_t* cursor)
 
 			if (ha_search_and_delete_if_found(table, fold, rec)) {
 				MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_REMOVED);
+        MONITOR_INC_TIME_IN_MICRO_SECS(
+          MONITOR_ADAPTIVE_HASH_REMOVE_ROW_TIME_MICROSECOND,
+          start_time);
 			} else {
 				MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_REMOVE_NOT_FOUND);
 			}
@@ -1739,6 +1775,8 @@ btr_search_update_hash_node_on_insert(btr_cur_t* cursor, rw_lock_t* ahi_latch)
 	if (!btr_search_enabled) {
 		return;
 	}
+
+  ulonglong start_time= microsecond_interval_timer();
 
 	rec = btr_cur_get_rec(cursor);
 
@@ -1781,6 +1819,9 @@ btr_search_update_hash_node_on_insert(btr_cur_t* cursor, rw_lock_t* ahi_latch)
 			table, cursor->fold, rec, block,
 			page_rec_get_next(rec))) {
 			MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_UPDATED);
+      MONITOR_INC_TIME_IN_MICRO_SECS(
+          MONITOR_ADAPTIVE_HASH_UPDATE_ROW_TIME_MICROSECOND,
+          start_time);
 		}
 
 func_exit:
@@ -2002,6 +2043,7 @@ btr_search_hash_table_validate(ulint hash_table_id)
 	rec_offs_init(offsets_);
 
 	buf_pool_mutex_enter_all();
+  ulonglong start_time= microsecond_interval_timer();
 
 	cell_count = hash_get_n_cells(
 			btr_search_sys->hash_tables[hash_table_id]);
@@ -2012,6 +2054,9 @@ btr_search_hash_table_validate(ulint hash_table_id)
 		if ((i != 0) && ((i % chunk_size) == 0)) {
 
 			buf_pool_mutex_exit_all();
+      MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_BUFFERPOOL_MUTEX_HOLD_TIME_MICROSECOND,
+        start_time);
 			btr_search_x_unlock_all();
 
 			os_thread_yield();
@@ -2024,6 +2069,7 @@ btr_search_hash_table_validate(ulint hash_table_id)
 			}
 
 			buf_pool_mutex_enter_all();
+      start_time= microsecond_interval_timer();
 
 			ulint	curr_cell_count = hash_get_n_cells(
 				btr_search_sys->hash_tables[hash_table_id]);
@@ -2137,6 +2183,9 @@ btr_search_hash_table_validate(ulint hash_table_id)
 		if (i != 0) {
 
 			buf_pool_mutex_exit_all();
+      MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_BUFFERPOOL_MUTEX_HOLD_TIME_MICROSECOND,
+        start_time);
 			btr_search_x_unlock_all();
 
 			os_thread_yield();
@@ -2149,6 +2198,7 @@ btr_search_hash_table_validate(ulint hash_table_id)
 			}
 
 			buf_pool_mutex_enter_all();
+      start_time= microsecond_interval_timer();
 
 			ulint	curr_cell_count = hash_get_n_cells(
 				btr_search_sys->hash_tables[hash_table_id]);
@@ -2172,6 +2222,9 @@ btr_search_hash_table_validate(ulint hash_table_id)
 	}
 
 	buf_pool_mutex_exit_all();
+  MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_BUFFERPOOL_MUTEX_HOLD_TIME_MICROSECOND,
+        start_time);
 func_exit:
 	btr_search_x_unlock_all();
 
