@@ -1079,7 +1079,7 @@ row_build_row_ref(
 /*******************************************************************//**
 Builds from a secondary index record a row reference with which we can
 search the clustered index record. */
-void
+dberr_t
 row_build_row_ref_in_tuple(
 /*=======================*/
 	dtuple_t*		ref,	/*!< in/out: row reference built;
@@ -1135,7 +1135,12 @@ row_build_row_ref_in_tuple(
 
 		pos = dict_index_get_nth_field_pos(index, clust_index, i);
 
-		ut_a(pos != ULINT_UNDEFINED);
+		if (pos == ULINT_UNDEFINED) {
+			ib::error() << "Table " << index->table->name
+				<< " has corrupted index "
+				<< index->name;
+			return DB_CORRUPTION;
+		}
 
 		ut_ad(!rec_offs_nth_default(offsets, pos));
 		field = rec_get_nth_field(rec, offsets, pos, &len);
@@ -1171,6 +1176,7 @@ row_build_row_ref_in_tuple(
 	if (UNIV_LIKELY_NULL(heap)) {
 		mem_heap_free(heap);
 	}
+	return DB_SUCCESS;
 }
 
 /***************************************************************//**

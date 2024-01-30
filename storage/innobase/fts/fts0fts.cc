@@ -3484,8 +3484,8 @@ fts_add_doc_by_id(
 			clust_ref = dtuple_create(heap, n_fields);
 			dict_index_copy_types(clust_ref, clust_index, n_fields);
 
-			row_build_row_ref_in_tuple(
-				clust_ref, rec, fts_id_index, NULL);
+			ut_a(DB_SUCCESS == row_build_row_ref_in_tuple(
+				clust_ref, rec, fts_id_index, NULL));
 
 			btr_pcur_open_with_no_init(
 				clust_index, clust_ref, PAGE_CUR_LE,

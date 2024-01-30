@@ -267,7 +267,7 @@ row_build_row_ref(
 /*******************************************************************//**
 Builds from a secondary index record a row reference with which we can
 search the clustered index record. */
-void
+dberr_t
 row_build_row_ref_in_tuple(
 /*=======================*/
 	dtuple_t*		ref,	/*!< in/out: row reference built;
