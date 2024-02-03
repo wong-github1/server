@@ -674,7 +674,6 @@ btr_search_update_hash_ref(
 				  RW_LOCK_FLAG_X | RW_LOCK_FLAG_S));
 	ut_ad(page_align(btr_cur_get_rec(cursor)) == block->frame);
 	ut_ad(page_is_leaf(block->frame));
-  ulonglong start_time= microsecond_interval_timer();
 	assert_block_ahi_valid(block);
 
 	dict_index_t* index = block->index;
@@ -722,13 +721,14 @@ btr_search_update_hash_ref(
 			mem_heap_free(heap);
 		}
 
+		ulonglong start_time= microsecond_interval_timer();
 		ha_insert_for_fold(btr_get_search_table(index), fold,
 				   block, rec);
-
-		MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_ADDED);
     MONITOR_INC_TIME_IN_MICRO_SECS(
           MONITOR_ADAPTIVE_HASH_ADD_ROW_TIME_MICROSECOND,
           start_time);
+					
+		MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_ADDED);
 	}
 
 func_exit:
@@ -1108,7 +1108,6 @@ void btr_search_drop_page_hash_index(buf_block_t* block,
 	rw_lock_t*		latch;
 
 retry:
-  ulonglong drop_index_start_time= microsecond_interval_timer();
 	/* This debug check uses a dirty read that could theoretically cause
 	false positives while buf_pool_clear_hash_index() is executing. */
 	assert_block_ahi_valid(block);
@@ -1138,6 +1137,7 @@ retry:
 		% btr_ahi_parts;
 	latch = btr_search_latches[ahi_slot];
 
+	ulonglong drop_index_start_time= microsecond_interval_timer();
 	rw_lock_s_lock(latch);
 
 	dict_index_t* index = block->index;
@@ -1258,12 +1258,16 @@ next_rec:
 		goto retry;
 	}
 
+	ulonglong remove_rows_start_time= microsecond_interval_timer();
 	for (i = 0; i < n_cached; i++) {
 
 		ha_remove_all_nodes_to_page(
 			btr_search_sys->hash_tables[ahi_slot],
 			folds[i], page);
 	}
+	MONITOR_INC_TIME_IN_MICRO_SECS(
+        MONITOR_ADAPTIVE_HASH_REMOVE_ROW_TIME_MICROSECOND,
+        remove_rows_start_time);
 
 	switch (index->search_info->ref_count--) {
 	case 0:
@@ -1276,11 +1280,11 @@ next_rec:
 
 	block->index = NULL;
 
-	MONITOR_INC(MONITOR_ADAPTIVE_HASH_PAGE_REMOVED);
-	MONITOR_INC_VALUE(MONITOR_ADAPTIVE_HASH_ROW_REMOVED, n_cached);
   MONITOR_INC_TIME_IN_MICRO_SECS(
         MONITOR_ADAPTIVE_HASH_REMOVE_PAGE_TIME_MICROSECOND,
         drop_index_start_time);
+	MONITOR_INC(MONITOR_ADAPTIVE_HASH_PAGE_REMOVED);
+	MONITOR_INC_VALUE(MONITOR_ADAPTIVE_HASH_ROW_REMOVED, n_cached);
 cleanup:
 	assert_block_ahi_valid(block);
 	rw_lock_x_unlock(latch);
@@ -1369,8 +1373,6 @@ btr_search_build_page_hash_index(
 	if (!btr_search_enabled) {
 		return;
 	}
-
-  ulonglong start_time= microsecond_interval_timer();
 
 	rec_offs_init(offsets_);
 	ut_ad(ahi_latch == btr_get_search_latch(index));
@@ -1497,6 +1499,7 @@ btr_search_build_page_hash_index(
 
 	btr_search_check_free_space_in_heap(index);
 
+	ulonglong start_add_page_time = microsecond_interval_timer();
 	rw_lock_x_lock(ahi_latch);
 
 	if (!btr_search_enabled) {
@@ -1526,19 +1529,20 @@ btr_search_build_page_hash_index(
 
 	{
 		hash_table_t*	table = btr_get_search_table(index);
+		ulonglong start_add_row_time= microsecond_interval_timer();
 		for (ulint i = 0; i < n_cached; i++) {
 			ha_insert_for_fold(table, folds[i], block, recs[i]);
 		}
+		MONITOR_INC_TIME_IN_MICRO_SECS(
+				MONITOR_ADAPTIVE_HASH_ADD_ROW_TIME_MICROSECOND,
+				start_add_row_time);
 	}
 
 	MONITOR_INC(MONITOR_ADAPTIVE_HASH_PAGE_ADDED);
 	MONITOR_INC_VALUE(MONITOR_ADAPTIVE_HASH_ROW_ADDED, n_cached);
   MONITOR_INC_TIME_IN_MICRO_SECS(
-          MONITOR_ADAPTIVE_HASH_ADD_ROW_TIME_MICROSECOND,
-          start_time);
-  MONITOR_INC_TIME_IN_MICRO_SECS(
         MONITOR_ADAPTIVE_HASH_ADD_PAGE_TIME_MICROSECOND,
-        start_time);
+        start_add_page_time);
 exit_func:
 	assert_block_ahi_valid(block);
 	rw_lock_x_unlock(ahi_latch);
@@ -1692,8 +1696,6 @@ void btr_search_update_hash_on_delete(btr_cur_t* cursor)
 		return;
 	}
 
-  ulonglong start_time= microsecond_interval_timer();
-
 	block = btr_cur_get_block(cursor);
 
 	ut_ad(rw_lock_own(&(block->lock), RW_LOCK_X));
@@ -1737,11 +1739,12 @@ void btr_search_update_hash_on_delete(btr_cur_t* cursor)
 		if (block->index) {
 			ut_a(block->index == index);
 
+			ulonglong start_time= microsecond_interval_timer();
 			if (ha_search_and_delete_if_found(table, fold, rec)) {
-				MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_REMOVED);
         MONITOR_INC_TIME_IN_MICRO_SECS(
           MONITOR_ADAPTIVE_HASH_REMOVE_ROW_TIME_MICROSECOND,
           start_time);
+				MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_REMOVED);
 			} else {
 				MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_REMOVE_NOT_FOUND);
 			}
@@ -1776,8 +1779,6 @@ btr_search_update_hash_node_on_insert(btr_cur_t* cursor, rw_lock_t* ahi_latch)
 		return;
 	}
 
-  ulonglong start_time= microsecond_interval_timer();
-
 	rec = btr_cur_get_rec(cursor);
 
 	block = btr_cur_get_block(cursor);
@@ -1799,6 +1800,8 @@ btr_search_update_hash_node_on_insert(btr_cur_t* cursor, rw_lock_t* ahi_latch)
 
 	ut_a(cursor->index == index);
 	ut_ad(!dict_index_is_ibuf(index));
+
+	ulonglong start_time= microsecond_interval_timer();
 	rw_lock_x_lock(ahi_latch);
 
 	if (!block->index || !btr_search_enabled) {
@@ -1818,10 +1821,10 @@ btr_search_update_hash_node_on_insert(btr_cur_t* cursor, rw_lock_t* ahi_latch)
 		if (ha_search_and_update_if_found(
 			table, cursor->fold, rec, block,
 			page_rec_get_next(rec))) {
-			MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_UPDATED);
-      MONITOR_INC_TIME_IN_MICRO_SECS(
-          MONITOR_ADAPTIVE_HASH_UPDATE_ROW_TIME_MICROSECOND,
-          start_time);
+				MONITOR_INC_TIME_IN_MICRO_SECS(
+					MONITOR_ADAPTIVE_HASH_UPDATE_ROW_TIME_MICROSECOND,
+						start_time);
+				MONITOR_INC(MONITOR_ADAPTIVE_HASH_ROW_UPDATED);
 		}
 
 func_exit:
