@@ -24,6 +24,8 @@
 #include "item_cmpfunc.h"      // Item_bool_func
 #include "item_strfunc.h"      // Item_str_func
 #include "item_sum.h"
+#include "my_alloc.h"
+#include "my_sys.h"
 #include "sql_type_json.h"
 #include "json_schema.h"
 
@@ -33,12 +35,29 @@ public:
   json_path_t p;
   bool constant;
   bool parsed;
-  json_path_step_t *cur_step;
+  MEM_ROOT_DYNAMIC_ARRAY *cur_step;
   void set_constant_flag(bool s_constant)
   {
     constant= s_constant;
     parsed= FALSE;
   }
+};
+
+class json_common
+{
+  protected:
+   MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
+};
+
+class json_mem_root
+{
+  public:
+   MEM_ROOT current_mem_root;
+   bool mem_root_inited;
+   json_mem_root()
+   {
+    mem_root_inited= false;
+   }
 };
 
 
@@ -52,14 +71,20 @@ void report_json_error_ex(const char *js, json_engine_t *je,
 class Json_engine_scan: public json_engine_t
 {
 public:
-  Json_engine_scan(CHARSET_INFO *i_cs, const uchar *str, const uchar *end)
+  Json_engine_scan(MEM_ROOT *mem_root, CHARSET_INFO *i_cs, const uchar *str,
+                   const uchar *end)
   {
+    mem_root_dynamic_array_init(mem_root, PSI_NOT_INSTRUMENTED,
+                               &stack,
+                               sizeof(int), NULL,
+                               32, 32, MYF(0));
     json_scan_start(this, i_cs, str, end);
   }
-  Json_engine_scan(const String &str)
-   :Json_engine_scan(str.charset(), (const uchar *) str.ptr(),
-                                    (const uchar *) str.end())
+  Json_engine_scan(MEM_ROOT *mem_root, const String &str)
+   :Json_engine_scan(mem_root, str.charset(), (const uchar *) str.ptr(),
+                     (const uchar *) str.end())
   { }
+  Json_engine_scan(){}
   bool check_and_get_value_scalar(String *res, int *error);
   bool check_and_get_value_complex(String *res, int *error,
                                   json_value_types cur_value_type=
@@ -70,11 +95,27 @@ public:
 class Json_path_extractor: public json_path_with_flags
 {
 protected:
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
   String tmp_js, tmp_path;
+  Json_engine_scan je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
   virtual ~Json_path_extractor() { }
   virtual bool check_and_get_value(Json_engine_scan *je,
                                    String *to, int *error)=0;
-  bool extract(String *to, Item *js, Item *jp, CHARSET_INFO *cs);
+  bool extract(MEM_ROOT *mem_root, String *to, Item *js,
+               Item *jp, CHARSET_INFO *cs,
+               MEM_ROOT_DYNAMIC_ARRAY *,
+               String *func_name_str);
+  void init_json_engine_stack(MEM_ROOT *mem_root);
+public:
+  Json_path_extractor() {mem_root_inited= false;}
+  void cleanup()
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -82,22 +123,20 @@ class Item_func_json_valid: public Item_bool_func
 {
 protected:
   String tmp_value;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
 
 public:
-  Item_func_json_valid(THD *thd, Item *json) : Item_bool_func(thd, json) {}
+  Item_func_json_valid(THD *thd, Item *json) :
+       Item_bool_func(thd, json) { mem_root_inited= false; }
   longlong val_int() override;
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_valid") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override
-  {
-    if (Item_bool_func::fix_length_and_dec(thd))
-      return TRUE;
-    set_maybe_null();
-    return FALSE;
-  }
+  bool fix_length_and_dec(THD *thd) override;
   bool set_format_by_check_constraint(Send_field_extended_metadata *to) const
     override
   {
@@ -107,14 +146,24 @@ public:
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_valid>(thd, this); }
   enum Functype functype() const override { return JSON_VALID_FUNC; }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
 class Item_func_json_equals: public Item_bool_func
 {
+json_engine_t je1, je2;
+MEM_ROOT current_mem_root;
+bool mem_root_inited;
+
 public:
   Item_func_json_equals(THD *thd, Item *a, Item *b):
-    Item_bool_func(thd, a, b) {}
+    Item_bool_func(thd, a, b)
+    {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_equals") };
@@ -124,18 +173,28 @@ public:
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_equals>(thd, this); }
   longlong val_int() override;
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
 class Item_func_json_exists: public Item_bool_func
 {
 protected:
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
   json_path_with_flags path;
   String tmp_js, tmp_path;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
 
 public:
   Item_func_json_exists(THD *thd, Item *js, Item *i_path):
-    Item_bool_func(thd, js, i_path) {}
+    Item_bool_func(thd, js, i_path)
+    {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_exists") };
@@ -145,6 +204,11 @@ public:
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_exists>(thd, this); }
   longlong val_int() override;
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -169,7 +233,6 @@ public:
 class Item_func_json_value: public Item_str_func,
                             public Json_path_extractor
 {
-
 public:
   Item_func_json_value(THD *thd, Item *js, Item *i_path):
     Item_str_func(thd, js, i_path) {}
@@ -179,12 +242,7 @@ public:
     return name;
   }
   bool fix_length_and_dec(THD *thd) override ;
-  String *val_str(String *to) override
-  {
-    null_value= Json_path_extractor::extract(to, args[0], args[1],
-                                             collation.collation);
-    return null_value ? NULL : to;
-  }
+  String *val_str(String *to) override;
   bool check_and_get_value(Json_engine_scan *je,
                            String *res, int *error) override
   {
@@ -192,6 +250,11 @@ public:
   }
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_value>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -200,19 +263,15 @@ class Item_func_json_query: public Item_json_func,
 {
 public:
   Item_func_json_query(THD *thd, Item *js, Item *i_path):
-    Item_json_func(thd, js, i_path) {}
+    Item_json_func(thd, js, i_path)
+    {}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_query") };
     return name;
   }
   bool fix_length_and_dec(THD *thd) override;
-  String *val_str(String *to) override
-  {
-    null_value= Json_path_extractor::extract(to, args[0], args[1],
-                                             collation.collation);
-    return null_value ? NULL : to;
-  }
+  String *val_str(String *to) override;
   bool check_and_get_value(Json_engine_scan *je,
                            String *res, int *error) override
   {
@@ -227,9 +286,13 @@ class Item_func_json_quote: public Item_str_func
 {
 protected:
   String tmp_s;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
 
 public:
-  Item_func_json_quote(THD *thd, Item *s): Item_str_func(thd, s) {}
+  Item_func_json_quote(THD *thd, Item *s): Item_str_func(thd, s)
+  {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_quote") };
@@ -239,16 +302,27 @@ public:
   String *val_str(String *) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_quote>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
 class Item_func_json_unquote: public Item_str_func
 {
+private:
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 protected:
   String tmp_s;
   String *read_json(json_engine_t *je);
 public:
-  Item_func_json_unquote(THD *thd, Item *s): Item_str_func(thd, s) {}
+  Item_func_json_unquote(THD *thd, Item *s): Item_str_func(thd, s)
+  {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_unquote") };
@@ -258,6 +332,11 @@ public:
   String *val_str(String *) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_unquote>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -266,6 +345,9 @@ class Item_json_str_multipath: public Item_json_func
 protected:
   json_path_with_flags *paths;
   String *tmp_paths;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 private:
   /**
     Number of paths returned by calling virtual method get_n_paths() and
@@ -282,23 +364,34 @@ private:
   uint n_paths;
 public:
   Item_json_str_multipath(THD *thd, List<Item> &list):
-    Item_json_func(thd, list), paths(NULL), tmp_paths(0), n_paths(0) {}
-  virtual ~Item_json_str_multipath();
+    Item_json_func(thd, list), paths(NULL), tmp_paths(0), n_paths(0)
+    {mem_root_inited= false;}
+  ~Item_json_str_multipath(){}
 
   bool fix_fields(THD *thd, Item **ref) override;
   virtual uint get_n_paths() const = 0;
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
 class Item_func_json_extract: public Item_json_str_multipath
 {
 protected:
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
   String tmp_js;
+  json_path_t p;
+  json_engine_t je, sav_je;
+
 public:
   String *read_json(String *str, json_value_types *type,
                     char **out_val, int *value_len);
   Item_func_json_extract(THD *thd, List<Item> &list):
-    Item_json_str_multipath(thd, list) {}
+    Item_json_str_multipath(thd, list)
+    {}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_extract") };
@@ -319,14 +412,20 @@ public:
 class Item_func_json_contains: public Item_bool_func
 {
 protected:
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
   String tmp_js;
   json_path_with_flags path;
   String tmp_path;
   bool a2_constant, a2_parsed;
   String tmp_val, *val;
+  json_engine_t je, ve, loc_js;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_contains(THD *thd, List<Item> &list):
-    Item_bool_func(thd, list) {}
+    Item_bool_func(thd, list)
+    {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_contains") };
@@ -336,23 +435,34 @@ public:
   longlong val_int() override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_contains>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
 class Item_func_json_contains_path: public Item_bool_func
 {
 protected:
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
   String tmp_js;
   json_path_with_flags *paths;
   String *tmp_paths;
   bool mode_one;
   bool ooa_constant, ooa_parsed;
   bool *p_found;
+  json_path_t p;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
 
 public:
   Item_func_json_contains_path(THD *thd, List<Item> &list):
-    Item_bool_func(thd, list), tmp_paths(0) {}
-  virtual ~Item_func_json_contains_path();
+    Item_bool_func(thd, list), tmp_paths(0)
+    {mem_root_inited= false;}
+  virtual ~Item_func_json_contains_path(){}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_contains_path") };
@@ -363,6 +473,11 @@ public:
   longlong val_int() override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_contains_path>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -371,11 +486,17 @@ class Item_func_json_array: public Item_json_func
 protected:
   String tmp_val;
   ulong result_limit;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_array(THD *thd):
-    Item_json_func(thd) {}
+    Item_json_func(thd)
+    {mem_root_inited= false;}
   Item_func_json_array(THD *thd, List<Item> &list):
-    Item_json_func(thd, list) {}
+    Item_json_func(thd, list)
+    {mem_root_inited= false;}
   String *val_str(String *) override;
   bool fix_length_and_dec(THD *thd) override;
   LEX_CSTRING func_name_cstring() const override
@@ -385,17 +506,25 @@ public:
   }
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_array>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
 class Item_func_json_array_append: public Item_json_str_multipath
 {
 protected:
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
   String tmp_js;
   String tmp_val;
+  json_engine_t je;
+
 public:
   Item_func_json_array_append(THD *thd, List<Item> &list):
-    Item_json_str_multipath(thd, list) {}
+    Item_json_str_multipath(thd, list) {mem_root_inited= false;}
   bool fix_length_and_dec(THD *thd) override;
   String *val_str(String *) override;
   uint get_n_paths() const override { return arg_count/2; }
@@ -413,7 +542,7 @@ class Item_func_json_array_insert: public Item_func_json_array_append
 {
 public:
   Item_func_json_array_insert(THD *thd, List<Item> &list):
-    Item_func_json_array_append(thd, list) {}
+    Item_func_json_array_append(thd, list) {mem_root_inited= false;}
   String *val_str(String *) override;
   LEX_CSTRING func_name_cstring() const override
   {
@@ -429,9 +558,9 @@ class Item_func_json_object: public Item_func_json_array
 {
 public:
   Item_func_json_object(THD *thd):
-    Item_func_json_array(thd) {}
+    Item_func_json_array(thd) {mem_root_inited= false;}
   Item_func_json_object(THD *thd, List<Item> &list):
-    Item_func_json_array(thd, list) {}
+    Item_func_json_array(thd, list) {mem_root_inited= false;}
   String *val_str(String *) override;
   LEX_CSTRING func_name_cstring() const override
   {
@@ -447,15 +576,18 @@ class Item_func_json_merge: public Item_func_json_array
 {
 protected:
   String tmp_js1, tmp_js2;
+  json_engine_t je2;
+
 public:
   Item_func_json_merge(THD *thd, List<Item> &list):
-    Item_func_json_array(thd, list) {}
+    Item_func_json_array(thd, list) {mem_root_inited= false;}
   String *val_str(String *) override;
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_merge_preserve") };
     return name;
   }
+  bool fix_length_and_dec(THD *thd) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_merge>(thd, this); }
 };
@@ -464,7 +596,7 @@ class Item_func_json_merge_patch: public Item_func_json_merge
 {
 public:
   Item_func_json_merge_patch(THD *thd, List<Item> &list):
-    Item_func_json_merge(thd, list) {}
+    Item_func_json_merge(thd, list) {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_merge_patch") };
@@ -478,9 +610,13 @@ public:
 
 class Item_func_json_normalize: public Item_json_func
 {
+json_engine_t je;
+MEM_ROOT current_mem_root;
+bool mem_root_inited;
+
 public:
   Item_func_json_normalize(THD *thd, Item *a):
-    Item_json_func(thd, a) {}
+    Item_json_func(thd, a) {mem_root_inited= false;}
   String *val_str(String *) override;
   LEX_CSTRING func_name_cstring() const override
   {
@@ -490,6 +626,11 @@ public:
   bool fix_length_and_dec(THD *thd) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_normalize>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -497,9 +638,14 @@ class Item_func_json_object_to_array: public Item_json_func
 {
   protected:
   String tmp;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_object_to_array(THD *thd, Item *a):
-    Item_json_func(thd, a) {}
+    Item_json_func(thd, a)
+    {mem_root_inited= false;}
   String *val_str(String *) override;
   LEX_CSTRING func_name_cstring() const override
   {
@@ -509,6 +655,11 @@ public:
   bool fix_length_and_dec(THD *thd) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_object_to_array>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -529,9 +680,14 @@ protected:
   json_path_with_flags path;
   String tmp_js;
   String tmp_path;
+  json_engine_t je;
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_length(THD *thd, List<Item> &list):
-    Item_long_func(thd, list) {}
+    Item_long_func(thd, list) {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_length") };
@@ -541,6 +697,11 @@ public:
   longlong val_int() override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_length>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -550,17 +711,27 @@ class Item_func_json_depth: public Item_long_func
   { return args[0]->check_type_can_return_text(func_name_cstring()); }
 protected:
   String tmp_js;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
-  Item_func_json_depth(THD *thd, Item *js): Item_long_func(thd, js) {}
+  Item_func_json_depth(THD *thd, Item *js): Item_long_func(thd, js)
+  {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_depth") };
     return name;
   }
-  bool fix_length_and_dec(THD *thd) override { max_length= 10; return FALSE; }
+  bool fix_length_and_dec(THD *thd) override;
   longlong val_int() override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_depth>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -568,8 +739,12 @@ class Item_func_json_type: public Item_str_func
 {
 protected:
   String tmp_js;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
-  Item_func_json_type(THD *thd, Item *js): Item_str_func(thd, js) {}
+  Item_func_json_type(THD *thd, Item *js): Item_str_func(thd, js) {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_type") };
@@ -579,6 +754,11 @@ public:
   String *val_str(String *) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_type>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -588,10 +768,15 @@ protected:
   String tmp_js;
   String tmp_val;
   bool mode_insert, mode_replace;
+  json_engine_t je;
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
+  
+
 public:
   Item_func_json_insert(bool i_mode, bool r_mode, THD *thd, List<Item> &list):
     Item_json_str_multipath(thd, list),
-      mode_insert(i_mode), mode_replace(r_mode) {}
+      mode_insert(i_mode), mode_replace(r_mode)
+      {mem_root_inited= false;}
   bool fix_length_and_dec(THD *thd) override;
   String *val_str(String *) override;
   uint get_n_paths() const override { return arg_count/2; }
@@ -612,9 +797,13 @@ class Item_func_json_remove: public Item_json_str_multipath
 {
 protected:
   String tmp_js;
+  json_engine_t je;
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
+
 public:
   Item_func_json_remove(THD *thd, List<Item> &list):
-    Item_json_str_multipath(thd, list) {}
+    Item_json_str_multipath(thd, list)
+    {mem_root_inited= false;}
   bool fix_length_and_dec(THD *thd) override;
   String *val_str(String *) override;
   uint get_n_paths() const override { return arg_count - 1; }
@@ -633,10 +822,14 @@ class Item_func_json_keys: public Item_str_func
 protected:
   json_path_with_flags path;
   String tmp_js, tmp_path;
+  json_engine_t je;
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
 
 public:
   Item_func_json_keys(THD *thd, List<Item> &list):
-    Item_str_func(thd, list) {}
+    Item_str_func(thd, list) {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_keys") };
@@ -646,6 +839,11 @@ public:
   String *val_str(String *) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_keys>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -657,7 +855,9 @@ protected:
   bool ooa_constant, ooa_parsed;
   int escape;
   int n_path_found;
-  json_path_t sav_path;
+  json_path_t p;
+  json_engine_t je;
+  MEM_ROOT_DYNAMIC_ARRAY json_depth_array;
 
   int compare_json_value_wild(json_engine_t *je, const String *cmp_str);
 
@@ -691,11 +891,17 @@ public:
 protected:
   formats fmt;
   String tmp_js;
+  json_engine_t je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_format(THD *thd, Item *js, formats format):
-    Item_json_func(thd, js), fmt(format) {}
+    Item_json_func(thd, js), fmt(format)
+    {mem_root_inited= false;}
   Item_func_json_format(THD *thd, List<Item> &list):
-    Item_json_func(thd, list), fmt(DETAILED) {}
+    Item_json_func(thd, list), fmt(DETAILED)
+    {mem_root_inited= false;}
 
   LEX_CSTRING func_name_cstring() const override;
   bool fix_length_and_dec(THD *thd) override;
@@ -703,6 +909,11 @@ public:
   String *val_json(String *str) override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_format>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 
@@ -807,10 +1018,14 @@ class Item_func_json_overlaps: public Item_bool_func
   String tmp_js;
   bool a2_constant, a2_parsed;
   String tmp_val, *val;
+  json_engine_t je, ve;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_overlaps(THD *thd, Item *a, Item *b):
     Item_bool_func(thd, a, b)
-    {}
+    {mem_root_inited= false;}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_overlaps") };
@@ -820,6 +1035,11 @@ public:
   longlong val_int() override;
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_json_overlaps>(thd, this); }
+  void cleanup() override
+  {
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
+  }
 };
 
 class Item_func_json_schema_valid: public Item_bool_func
@@ -829,6 +1049,9 @@ class Item_func_json_schema_valid: public Item_bool_func
   String tmp_val, *val;
   List<Json_schema_keyword> keyword_list;
   List<Json_schema_keyword> all_keywords;
+  json_engine_t je, ve;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
 
 public:
   Item_func_json_schema_valid(THD *thd, Item *a, Item *b):
@@ -837,6 +1060,7 @@ public:
       val= NULL;
       schema_parsed= false;
       set_maybe_null();
+      mem_root_inited= false;
     }
   LEX_CSTRING func_name_cstring() const override
   {
@@ -851,14 +1075,15 @@ public:
 };
 
 class Item_func_json_key_value: public Item_json_func,
-                            public Json_path_extractor
+                                public Json_path_extractor
 {
-
-  String tmp_str;
+  String tmp_str, tmp_val;
+  json_engine_t je, je_scan;
 
 public:
   Item_func_json_key_value(THD *thd, Item *js, Item *i_path):
-    Item_json_func(thd, js, i_path) {}
+    Item_json_func(thd, js, i_path)
+    {}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("json_key_value") };
@@ -886,9 +1111,17 @@ protected:
   HASH items;
   MEM_ROOT hash_root;
   bool parse_for_each_row;
+  json_engine_t je1, je2, res_je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_array_intersect(THD *thd, Item *a, Item *b):
-    Item_str_func(thd, a, b) { hash_inited= root_inited= parse_for_each_row= false; }
+    Item_str_func(thd, a, b)
+    {
+      hash_inited= root_inited= parse_for_each_row= false;
+      mem_root_inited= false;
+    }
   String *val_str(String *) override;
   bool fix_length_and_dec(THD *thd) override;
   LEX_CSTRING func_name_cstring() const override
@@ -905,6 +1138,8 @@ public:
       my_hash_free(&items);
     if (root_inited)
       free_root(&hash_root, MYF(0));
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
   }
   void prepare_json_and_create_hash(json_engine_t *je1, String *js);
 };
@@ -916,9 +1151,17 @@ protected:
   bool hash_inited, root_inited;
   HASH items;
   MEM_ROOT hash_root;
+  json_engine_t je1, je_res, temp_je;
+  MEM_ROOT current_mem_root;
+  bool mem_root_inited;
+
 public:
   Item_func_json_object_filter_keys(THD *thd, Item *a, Item *b):
-    Item_str_func(thd, a, b) { hash_inited= root_inited= false; }
+    Item_str_func(thd, a, b)
+    {
+      hash_inited= root_inited= false;
+      mem_root_inited= false;
+    }
   String *val_str(String *) override;
   bool fix_length_and_dec(THD *thd) override;
   LEX_CSTRING func_name_cstring() const override
@@ -931,11 +1174,12 @@ public:
 
   void cleanup() override
   {
-    Item_str_func::cleanup();
     if (hash_inited)
       my_hash_free(&items);
     if (root_inited)
       free_root(&hash_root, MYF(0));
+    if (mem_root_inited)
+      free_root(&current_mem_root, MYF(0));
   }
 };
 

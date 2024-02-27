@@ -1,0 +1,2 @@
+select json_valid('[1, 2]');
+select json_value('{"key1":123}', '$.key2');
