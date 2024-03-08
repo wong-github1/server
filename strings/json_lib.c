@@ -17,6 +17,7 @@
 #include <string.h>
 #include <m_ctype.h>
 #include "json_lib.h"
+#include "my_sys.h"
 
 int get_default_json_depth(void)
 {
@@ -147,67 +148,46 @@ static int syntax_error(json_engine_t *j)
 /* Value of object. */
 static int mark_object(json_engine_t *j)
 {
-  int curr_json_depth_limit= get_json_depth();
   j->state= JST_OBJ_START;
-  if (++j->stack_p < curr_json_depth_limit)
-  {
-    j->stack[j->stack_p]= JST_OBJ_CONT;
-    return 0;
-  }
-  j->s.error= JE_DEPTH;
-  return 1;
+  ++j->stack_p;
+  *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p))= JST_OBJ_CONT;  
+  return 0;
 }
 
 
 /* Read value of object. */
 static int read_obj(json_engine_t *j)
 {
-  int curr_json_depth_limit= get_json_depth();
-
   j->state= JST_OBJ_START;
   j->value_type= JSON_VALUE_OBJECT;
   j->value= j->value_begin;
-  if (++j->stack_p < curr_json_depth_limit)
-  {
-    j->stack[j->stack_p]= JST_OBJ_CONT;
-    return 0;
-  }
-  j->s.error= JE_DEPTH;
-  return 1;
+  ++j->stack_p;
+  *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p))= JST_OBJ_CONT;
+  return 0;
+
 }
 
 
 /* Value of array. */
 static int mark_array(json_engine_t *j)
 {
-  int curr_json_depth_limit= get_json_depth();
-
   j->state= JST_ARRAY_START;
-  if (++j->stack_p < curr_json_depth_limit)
-  {
-    j->stack[j->stack_p]= JST_ARRAY_CONT;
-    j->value= j->value_begin;
-    return 0;
-  }
-  j->s.error= JE_DEPTH;
-  return 1;
+  ++j->stack_p;
+  *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p))= JST_ARRAY_CONT;
+  j->value= j->value_begin;
+  return 0;
 }
 
 /* Read value of object. */
 static int read_array(json_engine_t *j)
 {
-  int curr_json_depth_limit= get_json_depth();
-
   j->state= JST_ARRAY_START;
   j->value_type= JSON_VALUE_ARRAY;
   j->value= j->value_begin;
-  if (++j->stack_p < curr_json_depth_limit)
-  {
-    j->stack[j->stack_p]= JST_ARRAY_CONT;
-    return 0;
-  }
-  j->s.error= JE_DEPTH;
-  return 1;
+  ++j->stack_p;
+  *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p))= JST_ARRAY_CONT;
+  return 0;
+
 }
 
 
@@ -408,7 +388,7 @@ static int skip_str_constant(json_engine_t *j)
       return j->s.error= json_eos(&j->s) ? JE_EOS : JE_BAD_CHR; 
   }
 
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   return 0;
 }
 
@@ -430,7 +410,7 @@ static int read_strn(json_engine_t *j)
   if (skip_str_constant(j))
     return 1;
 
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   j->value_len= (int)(j->s.c_str - j->value) - j->s.c_next_len;
   return 0;
 }
@@ -550,7 +530,7 @@ static int skip_num_constant(json_engine_t *j)
       break;
   }
 
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   return 0;
 }
 
@@ -603,7 +583,7 @@ static int v_false(json_engine_t *j)
 {
   if (skip_string_verbatim(&j->s, "alse"))
    return 1;
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   return json_scan_next(j);
 }
 
@@ -613,7 +593,7 @@ static int v_null(json_engine_t *j)
 {
   if (skip_string_verbatim(&j->s, "ull"))
    return 1;
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   return json_scan_next(j);
 }
 
@@ -623,7 +603,7 @@ static int v_true(json_engine_t *j)
 {
   if (skip_string_verbatim(&j->s, "rue"))
    return 1;
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   return json_scan_next(j);
 }
 
@@ -633,7 +613,7 @@ static int read_false(json_engine_t *j)
 {
   j->value_type= JSON_VALUE_FALSE;
   j->value= j->value_begin;
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   j->value_len= 5;
   return skip_string_verbatim(&j->s, "alse");
 }
@@ -644,7 +624,7 @@ static int read_null(json_engine_t *j)
 {
   j->value_type= JSON_VALUE_NULL;
   j->value= j->value_begin;
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   j->value_len= 4;
   return skip_string_verbatim(&j->s, "ull");
 }
@@ -655,7 +635,7 @@ static int read_true(json_engine_t *j)
 {
   j->value_type= JSON_VALUE_TRUE;
   j->value= j->value_begin;
-  j->state= j->stack[j->stack_p];
+  j->state= *((int*)(j->stack.buffer) + sizeof(int)*(j->stack_p));
   j->value_len= 4;
   return skip_string_verbatim(&j->s, "rue");
 }
@@ -825,7 +805,7 @@ int json_scan_start(json_engine_t *je,
   static const uchar no_time_to_die= 0;
 
   json_string_setup(&je->s, i_cs, str, end);
-  je->stack[0]= JST_DONE;
+  *((int*)(je->stack.buffer))= JST_DONE;
   je->stack_p= 0;
   je->state= JST_VALUE;
   je->killed_ptr = (uchar*)&no_time_to_die;
@@ -880,7 +860,10 @@ static int skip_key(json_engine_t *j)
   run our 'state machine' accordingly.
 */
 static int struct_end_eos(json_engine_t *j)
-{ return json_actions[j->stack[j->stack_p]][C_EOS](j); }
+{
+  int *idx= ((int*)(j->stack.buffer) + (sizeof(int))*(j->stack_p));
+  return json_actions[*idx][C_EOS](j);
+}
 
 
 /*
@@ -890,7 +873,10 @@ static int struct_end_eos(json_engine_t *j)
   run our 'state machine' accordingly.
 */
 static int struct_end_cb(json_engine_t *j)
-{ return json_actions[j->stack[j->stack_p]][C_RCURB](j); }
+{
+  int *idx= ((int*)(j->stack.buffer) + (sizeof(int))*(j->stack_p));
+  return json_actions[*idx][C_RCURB](j);
+}
 
 
 /*
@@ -900,7 +886,10 @@ static int struct_end_cb(json_engine_t *j)
   run our 'state machine' accordingly.
 */
 static int struct_end_qb(json_engine_t *j)
-{ return json_actions[j->stack[j->stack_p]][C_RSQRB](j); }
+{
+  int *idx= ((int*)(j->stack.buffer) + (sizeof(int))*(j->stack_p));
+  return json_actions[*idx][C_RSQRB](j);
+}
 
 
 /*
@@ -910,7 +899,10 @@ static int struct_end_qb(json_engine_t *j)
   run our 'state machine' accordingly.
 */
 static int struct_end_cm(json_engine_t *j)
-{ return json_actions[j->stack[j->stack_p]][C_COMMA](j); }
+{
+  int *idx= ((int*)(j->stack.buffer) + (sizeof(int))*(j->stack_p));
+  return json_actions[*idx][C_COMMA](j);
+}
 
 
 int json_read_keyname_chr(json_engine_t *j)
@@ -1141,13 +1133,13 @@ static int json_path_transitions[N_PATH_STATES][N_PATH_CLASSES]=
 int json_path_setup(json_path_t *p,
                     CHARSET_INFO *i_cs, const uchar *str, const uchar *end)
 {
- int c_len, t_next, state= PS_GO, is_negative_index= 0, is_last= 0,
-  prev_value=0, is_to= 0, *cur_val, curr_json_depth_limit= get_json_depth();
+  int c_len, t_next, state= PS_GO, is_negative_index= 0, is_last= 0,
+  prev_value=0, is_to= 0, *cur_val;
   enum json_path_step_types double_wildcard= JSON_PATH_KEY_NULL;
   json_string_setup(&p->s, i_cs, str, end);
 
-  p->steps[0].type= JSON_PATH_ARRAY_WILD;
-  p->last_step= p->steps;
+  ((json_path_step_t*)(p->steps.buffer))->type= JSON_PATH_ARRAY_WILD;
+  p->last_step= (json_path_step_t*)(p->steps.buffer);
   p->mode_strict= FALSE;
   p->types_used= JSON_PATH_KEY_NULL;
 
@@ -1208,14 +1200,13 @@ int json_path_setup(json_path_t *p,
       state= PS_KEY;
       /* fall through */
     case PS_KEY:
-      p->last_step++;
+      p->last_step+=1;
       is_to= 0;
       prev_value= 0;
       is_negative_index= 0;
       is_last= 0;
-      if (p->last_step - p->steps >= curr_json_depth_limit)
-        return p->s.error= JE_DEPTH;
-      p->types_used|= p->last_step->type= JSON_PATH_KEY | double_wildcard;
+      p->last_step->type= JSON_PATH_KEY | double_wildcard;
+      p->types_used|= JSON_PATH_KEY | double_wildcard;
       double_wildcard= JSON_PATH_KEY_NULL;
       /* fall through */
     case PS_KEYX:
@@ -1231,8 +1222,6 @@ int json_path_setup(json_path_t *p,
       is_to= 0;
       prev_value= 0;
       is_negative_index= 0;
-      if (p->last_step - p->steps >= curr_json_depth_limit)
-        return p->s.error= JE_DEPTH;
       p->types_used|= p->last_step->type= JSON_PATH_ARRAY | double_wildcard;
       double_wildcard= JSON_PATH_KEY_NULL;
       p->last_step->n_item= 0;
@@ -1347,7 +1336,7 @@ int json_skip_key(json_engine_t *j)
   step of the path.
 */
 static int handle_match(json_engine_t *je, json_path_t *p,
-                        json_path_step_t **p_cur_step, int *array_counters)
+                        json_path_step_t **p_cur_step, MEM_ROOT_DYNAMIC_ARRAY *array_counters)
 {
   json_path_step_t *next_step= *p_cur_step + 1;
 
@@ -1374,7 +1363,7 @@ static int handle_match(json_engine_t *je, json_path_t *p,
   {
     do
     {
-      array_counters[next_step - p->steps]= SKIPPED_STEP_MARK;
+      *(((int*)(array_counters->buffer))+(next_step - (json_path_step_t*)(p->steps.buffer))*(sizeof(int)))= SKIPPED_STEP_MARK;
       if (++next_step > p->last_step)
       {
         je->s.c_str= je->value_begin;
@@ -1388,7 +1377,7 @@ static int handle_match(json_engine_t *je, json_path_t *p,
       (int) (next_step->type & JSON_PATH_KEY_OR_ARRAY))
     return json_skip_level(je);
 
-  array_counters[next_step - p->steps]= 0;
+  *(((int*)(array_counters->buffer))+(next_step - (json_path_step_t*)(p->steps.buffer))*(sizeof(int)))= 0;
   if (next_step->type & JSON_PATH_ARRAY)
   {
     int array_size;
@@ -1404,7 +1393,7 @@ static int handle_match(json_engine_t *je, json_path_t *p,
       }
       array_size= -array_size;
     }
-    array_counters[next_step - p->steps]= array_size;
+    *(((int*)(array_counters->buffer))+(next_step - (json_path_step_t*)(p->steps.buffer))*(sizeof(int)))= array_size;
   }
 
   *p_cur_step= next_step;
@@ -1431,7 +1420,7 @@ int json_key_matches(json_engine_t *je, json_string_t *k)
 
 int json_find_path(json_engine_t *je,
                    json_path_t *p, json_path_step_t **p_cur_step,
-                   int *array_counters)
+                   MEM_ROOT_DYNAMIC_ARRAY *array_counters)
 {
   json_string_t key_name;
   int res= 0;
@@ -1455,7 +1444,7 @@ int json_find_path(json_engine_t *je,
           continue;
         }
       }
-      if (cur_step == p->last_step ||
+      if (cur_step == (p->last_step) ||
           handle_match(je, p, p_cur_step, array_counters))
         goto exit;
       break;
@@ -1463,16 +1452,16 @@ int json_find_path(json_engine_t *je,
       DBUG_ASSERT(cur_step->type & JSON_PATH_ARRAY);
       if (cur_step->type & JSON_PATH_ARRAY_RANGE)
       {
-        res= (cur_step->n_item <= array_counters[cur_step - p->steps] &&
-              cur_step->n_item_end >= array_counters[cur_step - p->steps]);
-        array_counters[cur_step - p->steps]++;
+        res= (cur_step->n_item <= *((int*)(array_counters->buffer)+sizeof(int)*(cur_step - (json_path_step_t*)(p->steps.buffer))) &&
+              cur_step->n_item_end >= *((int*)(array_counters->buffer)+sizeof(int)*(cur_step - (json_path_step_t*)(p->steps.buffer))));
+        (*((int*)(array_counters->buffer)+sizeof(int)*(cur_step - (json_path_step_t*)(p->steps.buffer))))++;
       }
       else
-        res= cur_step->n_item == array_counters[cur_step - p->steps]++;
+        res= cur_step->n_item == (*((int*)(array_counters->buffer)+sizeof(int)*(cur_step - (json_path_step_t*)(p->steps.buffer))))++;
       if ((cur_step->type & JSON_PATH_WILD) || res)
       {
         /* Array item matches. */
-        if (cur_step == p->last_step ||
+        if (cur_step == (p->last_step) ||
             handle_match(je, p, p_cur_step, array_counters))
           goto exit;
       }
@@ -1483,8 +1472,8 @@ int json_find_path(json_engine_t *je,
       do
       {
         (*p_cur_step)--;
-      } while (*p_cur_step > p->steps &&
-               array_counters[*p_cur_step - p->steps] == SKIPPED_STEP_MARK);
+      } while (*p_cur_step > (json_path_step_t*)(p->steps.buffer) &&
+               *((int*)(array_counters->buffer)+sizeof(int)*(cur_step - (json_path_step_t*)(p->steps.buffer))) == SKIPPED_STEP_MARK);
       break;
     case JST_ARRAY_END:
       (*p_cur_step)--;
@@ -1519,8 +1508,6 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
   uint p_c;
   int path_found, no_match_found;
 
-  state->array_counters= (int*)malloc(get_json_depth() * sizeof(int));
-
   do
   {
     switch (je->state)
@@ -1532,8 +1519,8 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
       {
         json_path_step_t *cur_step;
         if (state->path_depths[p_c] <
-              state->cur_depth /* Path already failed. */ ||
-            !((cur_step= state->paths[p_c].steps + state->cur_depth)->type &
+              state->cur_depth  /* this Path already failed. */ ||
+            !((cur_step= ((json_path_step_t*)(state->paths[p_c].steps.buffer) + (sizeof(json_path_step_t))*(state->cur_depth)))->type &
               JSON_PATH_KEY))
           continue;
 
@@ -1545,7 +1532,7 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
           if (!json_key_matches(je, &key_name))
             continue;
         }
-        if (cur_step == state->paths[p_c].last_step + state->cur_depth)
+        if (cur_step == ((state->paths[p_c].last_step) + sizeof(json_path_step_t)*(state->cur_depth)))
           path_found= TRUE;
         else
         {
@@ -1571,14 +1558,14 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
       {
         json_path_step_t *cur_step;
         if (state->path_depths[p_c]< state->cur_depth /* Path already failed. */ ||
-            !((cur_step= state->paths[p_c].steps + state->cur_depth)->type &
+           ((cur_step= ((json_path_step_t*)(state->paths[p_c].steps.buffer) + (sizeof(json_path_step_t))*(state->cur_depth)))->type &
               JSON_PATH_ARRAY))
           continue;
         if (cur_step->type & JSON_PATH_WILD ||
-            cur_step->n_item == state->array_counters[state->cur_depth])
+            cur_step->n_item == *(int*)(state->array_counters.buffer+sizeof(int)*(state->cur_depth)))
         {
           /* Array item matches. */
-          if (cur_step == state->paths[p_c].last_step + state->cur_depth)
+          if (cur_step == ((state->paths[p_c].last_step) + sizeof(json_path_step_t)*(state->cur_depth)))
             path_found= TRUE;
           else
           {
@@ -1594,7 +1581,7 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
       if (no_match_found)
         json_skip_array_item(je);
 
-      state->array_counters[state->cur_depth]++;
+      (*(int*)((state->array_counters.buffer)+sizeof(int)*(state->cur_depth)))++;
       break;
     case JST_OBJ_START:
     case JST_ARRAY_START:
@@ -1603,8 +1590,8 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
         if (state->path_depths[p_c] < state->cur_depth)
           /* Path already failed. */
           continue;
-        if (state->paths[p_c].steps[state->cur_depth].type &
-            ((je->state == JST_OBJ_START) ? JSON_PATH_KEY : JSON_PATH_ARRAY))
+        /*if (state->(paths[p_c])->(steps->buffer+sizeof(json_path_step_t)*state->cur_depth)->type &
+            ((je->state == JST_OBJ_START) ? JSON_PATH_KEY : JSON_PATH_ARRAY))*/
           state->path_depths[p_c]++;
       }
       state->cur_depth++;
@@ -1625,12 +1612,9 @@ int json_find_paths_next(json_engine_t *je, json_find_paths_t *state)
     };
   } while (json_scan_next(je) == 0);
 
-  /* No luck. */
-  free(state->array_counters);
   return 1;
 
 exit:
-  free(state->array_counters);
   return je->s.error;
 }
 
@@ -1815,35 +1799,36 @@ int json_get_path_start(json_engine_t *je, CHARSET_INFO *i_cs,
                         json_path_t *p)
 {
   json_scan_start(je, i_cs, str, end);
-  p->last_step= p->steps - 1; 
+  p->last_step= ((json_path_step_t*)(p->steps.buffer))-sizeof(json_path_step_t);
   return 0;
 }
 
 
 int json_get_path_next(json_engine_t *je, json_path_t *p)
 {
-  if (p->last_step < p->steps)
+  if (p->last_step < (json_path_step_t*)(p->steps.buffer))
   {
     if (json_read_value(je))
       return 1;
 
-    p->last_step= p->steps;
-    p->steps[0].type= JSON_PATH_ARRAY_WILD;
-    p->steps[0].n_item= 0;
+    p->last_step= ((json_path_step_t*)(p->steps.buffer)+sizeof(json_path_step_t)*(p->steps.elements));
+    ((json_path_step_t*)(p->steps.buffer))->type= JSON_PATH_ARRAY_WILD;
+    ((json_path_step_t*)(p->steps.buffer))->n_item= 0;
     return 0;
   }
   else
   {
     if (json_value_scalar(je))
     {
-      if (p->last_step->type & JSON_PATH_ARRAY)
-        p->last_step->n_item++;
+      if (((p->last_step))->type & JSON_PATH_ARRAY)
+        ((p->last_step))->n_item++;
     }
     else
     {
-      p->last_step++;
-      p->last_step->type= (enum json_path_step_types) je->value_type;
-      p->last_step->n_item= 0;
+      mem_root_dynamic_array_insert(&(p->steps), 0);
+      p->last_step= ((json_path_step_t*)(p->steps.buffer)+sizeof(json_path_step_t)*(p->steps.elements));
+      ((p->last_step))->type= (enum json_path_step_types) je->value_type;
+      ((p->last_step))->n_item= 0;
     }
 
     if (json_scan_next(je))
@@ -1855,10 +1840,10 @@ int json_get_path_next(json_engine_t *je, json_path_t *p)
     switch (je->state)
     {
     case JST_KEY:
-      p->last_step->key= je->s.c_str;
+      ((p->last_step))->key= je->s.c_str;
       do
       {
-        p->last_step->key_end= je->s.c_str;
+        ((p->last_step))->key_end= je->s.c_str;
       } while (json_read_keyname_chr(je) == 0);
       if (je->s.error)
         return 1;
@@ -1872,8 +1857,8 @@ int json_get_path_next(json_engine_t *je, json_path_t *p)
     case JST_OBJ_END:
     case JST_ARRAY_END:
       p->last_step--;
-      if (p->last_step->type & JSON_PATH_ARRAY)
-        p->last_step->n_item++;
+      if ((p->last_step)->type & JSON_PATH_ARRAY)
+        ((p->last_step))->n_item++;
       break;
     default:
       break;
@@ -1922,12 +1907,14 @@ enum json_types json_type(const char *js, const char *js_end,
 {
   json_engine_t je;
 
-  je.stack= (int*)malloc(get_json_depth() * sizeof(int));
-  memset(je.stack, 0, get_json_depth() * sizeof(int));
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   json_scan_start(&je, &my_charset_utf8mb4_bin,(const uchar *) js,
                   (const uchar *) js_end);
-  free(je.stack);
+  mem_root_dynamic_array_free(&je.stack);
   return smart_read_value(&je, value, value_len);
 }
 
@@ -1939,8 +1926,10 @@ enum json_types json_get_array_item(const char *js, const char *js_end,
   json_engine_t je;
   int c_item= 0;
 
-  je.stack= (int*)malloc(get_json_depth() * sizeof(int));
-  memset(je.stack, 0, get_json_depth() * sizeof(int));
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   json_scan_start(&je, &my_charset_utf8mb4_bin,(const uchar *) js,
                   (const uchar *) js_end);
@@ -1971,7 +1960,7 @@ enum json_types json_get_array_item(const char *js, const char *js_end,
   }
 
 err_return:
-  free(je.stack);
+  mem_root_dynamic_array_free(&je.stack);
   return JSV_BAD_JSON;
 }
 
@@ -2003,8 +1992,10 @@ enum json_types json_get_object_key(const char *js, const char *js_end,
   json_string_t key_name;
   int n_keys= 0;
 
-  je.stack= (int*)malloc(get_json_depth() * sizeof(int));
-  memset(je.stack, 0, get_json_depth() * sizeof(int));
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   json_string_set_cs(&key_name, &my_charset_utf8mb4_bin);
 
@@ -2039,7 +2030,7 @@ enum json_types json_get_object_key(const char *js, const char *js_end,
   }
 
 err_return:
-  free(je.stack);
+  mem_root_dynamic_array_free(&je.stack);
   return JSV_BAD_JSON;
 }
 
@@ -2065,15 +2056,15 @@ int json_valid(const char *js, size_t js_len, CHARSET_INFO *cs, json_engine_t *t
 {
   json_engine_t je;
 
-  je.stack= (int*)malloc(get_json_depth() * sizeof(int));
-  memset(je.stack, 0, get_json_depth() * sizeof(int));
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   json_scan_start(&je, cs, (const uchar *) js, (const uchar *) js + js_len);
   while (json_scan_next(&je) == 0) /* no-op */ ;
 
  *temp_je= je;
-
-  free(je.stack);
 
   return je.s.error;
 }
@@ -2102,9 +2093,10 @@ int json_locate_key(const char *js, const char *js_end,
   json_string_t key_name;
   int t_next, c_len, match_result;
 
-  je.stack= (int*)malloc(get_json_depth() * sizeof(int));
-  memset(je.stack, 0, get_json_depth() * sizeof(int));
-
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
   json_string_set_cs(&key_name, &my_charset_utf8mb4_bin);
 
   json_scan_start(&je, &my_charset_utf8mb4_bin,(const uchar *) js,
@@ -2136,7 +2128,7 @@ int json_locate_key(const char *js, const char *js_end,
 
         if (*comma_pos == 1)
         {
-          free(je.stack);
+          mem_root_dynamic_array_free(&je.stack);
           return 0;
         }
 
@@ -2160,13 +2152,13 @@ int json_locate_key(const char *js, const char *js_end,
 
     case JST_OBJ_END:
       *key_start= NULL;
-       free(je.stack);
+       mem_root_dynamic_array_free(&je.stack);
        return 0;
     }
   }
 
 err_return:
-  free(je.stack);
+  mem_root_dynamic_array_free(&je.stack);
   return 1;
 
 }

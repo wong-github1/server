@@ -421,7 +421,10 @@ bool Json_schema_const::validate(const json_engine_t *je,
   if (type != curr_je.value_type)
    return true;
 
-  temp_je_2.stack= (int*)malloc(current_thd->variables.json_depth_limit * sizeof(int));
+mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &temp_je_2.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
   if (curr_je.value_type <= JSON_VALUE_NUMBER)
   {
     if (!json_value_scalar(&temp_je))
@@ -429,7 +432,7 @@ bool Json_schema_const::validate(const json_engine_t *je,
       if (json_skip_level(&temp_je))
       {
         curr_je= temp_je;
-        free(temp_je_2.stack);
+        free(&temp_je_2.stack);
         return true;
       }
       end= (char*)temp_je.s.c_str;
@@ -444,13 +447,13 @@ bool Json_schema_const::validate(const json_engine_t *je,
       if (json_read_value(&temp_je_2))
       {
         curr_je= temp_je;
-        free(temp_je_2.stack);
+        free(&temp_je_2.stack);
         return true;
       }
       json_get_normalized_string(&temp_je_2, &a_res, &err);
       if (err)
       {
-        free(temp_je_2.stack);
+        free(&temp_je_2.stack);
         return true;
       }
     }
@@ -461,13 +464,13 @@ bool Json_schema_const::validate(const json_engine_t *je,
         !strncmp((const char*)const_json_value, a_res.ptr(),
                   a_res.length()))
     {
-      free(temp_je_2.stack);
+      free(&temp_je_2.stack);
       return false;
     }
     return true;
   }
 
-  free(temp_je_2.stack);
+  free(&temp_je_2.stack);
   return false;
 }
 
@@ -482,8 +485,10 @@ bool Json_schema_const::handle_keyword(THD *thd, json_engine_t *je,
   String a_res("", 0, je->s.cs);
   int err;
 
-  temp_je.stack= (int*) malloc(thd->variables.json_depth_limit * sizeof(int));
-  memset(temp_je.stack, 0, thd->variables.json_depth_limit * sizeof(int));
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &temp_je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   type= je->value_type;
 
@@ -502,13 +507,13 @@ bool Json_schema_const::handle_keyword(THD *thd, json_engine_t *je,
   {
     if (json_read_value(&temp_je))
     {
-      free(temp_je.stack);
+      
       return true;
     }
     json_get_normalized_string(&temp_je, &a_res, &err);
     if (err)
     {
-      free(temp_je.stack);
+      
       return true;
     }
   }
@@ -519,14 +524,14 @@ bool Json_schema_const::handle_keyword(THD *thd, json_engine_t *je,
                                             a_res.length()+1);
   if (!const_json_value)
   {
-    free(temp_je.stack);
+    
     return 1;
   }
 
   const_json_value[a_res.length()]= '\0';
   strncpy(const_json_value, (const char*)a_res.ptr(), a_res.length());
 
-  free(temp_je.stack);
+  
   return false;
 }
 
@@ -1301,24 +1306,25 @@ bool Json_schema_prefix_items::handle_keyword(THD *thd, json_engine_t *je,
   json_engine_t temp_je;
   int level= je->stack_p;
 
-  temp_je.stack= (int*)malloc(thd->variables.json_depth_limit * sizeof(int));
-  memset(temp_je.stack, 0, thd->variables.json_depth_limit * sizeof(int));
+  mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &temp_je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   while(json_scan_next(je)==0 && je->stack_p >= level)
   {
     char *begin, *end;
     int len;
-    memset(temp_je.stack, 0, thd->variables.json_depth_limit * sizeof(int));
 
       if (json_read_value(je))
       {
-        free(temp_je.stack);
+        
         return true;
       }
       if (je->value_type != JSON_VALUE_OBJECT)
       {
        my_error(ER_JSON_INVALID_VALUE_FOR_KEYWORD, MYF(0), "items");
-       free(temp_je.stack);
+       
        return true;
       }
 
@@ -1326,7 +1332,7 @@ bool Json_schema_prefix_items::handle_keyword(THD *thd, json_engine_t *je,
 
     if (json_skip_level(je))
     {
-      free(temp_je.stack);
+      
       return true;
     }
 
@@ -1340,20 +1346,20 @@ bool Json_schema_prefix_items::handle_keyword(THD *thd, json_engine_t *je,
 
       if (!keyword_list)
       {
-        free(temp_je.stack);
+        
         return true;
       }
       if (create_object_and_handle_keyword(thd, &temp_je, keyword_list,
                                            all_keywords))
       {
-        free(temp_je.stack);
+        
         return true;
       }
 
       prefix_items.push_back(keyword_list, thd->mem_root);
   }
 
-  free(temp_je.stack);
+  
   return false;
 }
 
@@ -2359,25 +2365,26 @@ bool Json_schema_logic::handle_keyword(THD *thd, json_engine_t *je,
   json_engine_t temp_je;
   int level= je->stack_p;
 
-  temp_je.stack= (int*)malloc(thd->variables.json_depth_limit * sizeof(int));
+   mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
+                                &temp_je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
   while(json_scan_next(je)==0 && je->stack_p >= level)
   {
     char *begin, *end;
     int len;
 
-    memset(temp_je.stack, 0, thd->variables.json_depth_limit * sizeof(int));
-
     if (json_read_value(je))
     {
-      free(temp_je.stack);
+      
       return true;
     }
     begin= (char*)je->value;
 
     if (json_skip_level(je))
     {
-      free(temp_je.stack);
+      
       return true;
     }
 
@@ -2391,20 +2398,20 @@ bool Json_schema_logic::handle_keyword(THD *thd, json_engine_t *je,
 
     if (!keyword_list)
     {
-      free(temp_je.stack);
+      
       return true;
     }
     if (create_object_and_handle_keyword(thd, &temp_je, keyword_list,
                                          all_keywords))
     {
-      free(temp_je.stack);
+      
       return true;
     }
 
     schema_items.push_back(keyword_list, thd->mem_root);
   }
 
-  free(temp_je.stack);
+  
   return false;
 }
 

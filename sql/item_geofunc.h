@@ -249,7 +249,7 @@ public:
 class Item_func_geometry_from_json: public Item_geometry_func
 {
   String tmp_js;
-  int *temp_json_depth_stack;
+  MEM_ROOT_DYNAMIC_ARRAY temp_json_depth_stack;
 
   bool check_arguments() const override
   {
@@ -259,11 +259,11 @@ class Item_func_geometry_from_json: public Item_geometry_func
   }
 public:
   Item_func_geometry_from_json(THD *thd, Item *js): Item_geometry_func(thd, js)
-  { temp_json_depth_stack= NULL; }
+  {}
   Item_func_geometry_from_json(THD *thd, Item *js, Item *opt):
-    Item_geometry_func(thd, js, opt) { temp_json_depth_stack= NULL; }
+    Item_geometry_func(thd, js, opt) {}
   Item_func_geometry_from_json(THD *thd, Item *js, Item *opt, Item *srid):
-    Item_geometry_func(thd, js, opt, srid) { temp_json_depth_stack= NULL; }
+    Item_geometry_func(thd, js, opt, srid) {}
   LEX_CSTRING func_name_cstring() const override
   {
     static LEX_CSTRING name= {STRING_WITH_LEN("st_geomfromgeojson") };
