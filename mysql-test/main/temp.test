@@ -1,0 +1,11 @@
+--error ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT
+select json_merge('string');
+select json_merge('string', 123);
+select json_merge('"string"', 123);
+select json_merge('[1, 2]', '[true, false]');
+select json_merge('{"1": 2}', '{"true": false}');
+select json_merge('{"1": 2}', '{"true": false}', '{"3": 4}');
+select json_merge(NULL,json_object('foo', 1));
+select json_merge('a','b');
+select json_merge('{"a":"b"}','{"c":"d"}');
+SELECT JSON_MERGE('[1, 2]', '{"id": 47}');

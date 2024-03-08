@@ -16,6 +16,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
+#include "my_alloc.h"
 #include "sql_type_json.h"
 #include <m_string.h>
 #include "json_schema.h"
@@ -26,5 +27,5 @@ bool json_assign_type(uint *curr_type, json_engine_t *je);
 uchar* get_key_name(const char *key_name, size_t *length,
                     my_bool /* unused */);
 void json_get_normalized_string(json_engine_t *je, String *res,
-                                int *error);
+                                int *error, MEM_ROOT *current_mem_root);
 #endif

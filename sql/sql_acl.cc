@@ -26,6 +26,7 @@
 */
 
 #include "mariadb.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
+#include "my_pthread.h"
 #include "sql_priv.h"
 #include "sql_acl.h"         // MYSQL_DB_FIELD_COUNT, ACL_ACCESS
 #include "sql_base.h"                           // close_mysql_tables
@@ -1768,9 +1769,12 @@ class User_table_json: public User_table
     const char *value_start;
     enum json_types value_type;
     json_engine_t temp_je;
-    int temp_stack[JSON_DEPTH_DEFAULT];
+    
+    mem_root_dynamic_array_init(NULL, PSI_NOT_INSTRUMENTED,
+                                &temp_je.stack,
+                                 sizeof(int), NULL,
+                                 32, 32, MYF(0));
 
-    temp_je.stack= temp_stack;
     String str, *res= m_table->field[2]->val_str(&str);
     if (!res || !res->length())
       (res= &str)->set(STRING_WITH_LEN("{}"), m_table->field[2]->charset());
