@@ -50,6 +50,18 @@ uint my_time_binary_length(uint dec);
 void my_timestamp_to_binary(const struct timeval *tm, uchar *ptr, uint dec);
 void my_timestamp_from_binary(struct timeval *tm, const uchar *ptr, uint dec);
 uint my_timestamp_binary_length(uint dec);
+static inline uint my_timestamp_binary_length_to_precision(uint length)
+{
+  switch (length) {
+  case 4: return 0;
+  case 5: return 2;
+  case 6: return 4;
+  case 7: return 6;
+  }
+  DBUG_ASSERT(0);
+  return 0;
+}
+
 /** End of MySQL routines and macros **/
 
 #endif /* COMPAT56_H_INCLUDED */

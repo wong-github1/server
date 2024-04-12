@@ -67,6 +67,9 @@ Named_type_handler<Type_handler_time2> type_handler_time2("time");
 Named_type_handler<Type_handler_newdate> type_handler_newdate("date");
 Named_type_handler<Type_handler_datetime2> type_handler_datetime2("datetime");
 
+Named_type_handler<Type_handler_timestamp2_with_tz>
+  type_handler_timestamp2_with_tz("timestamp with time zone");
+
 Named_type_handler<Type_handler_enum> type_handler_enum("enum");
 Named_type_handler<Type_handler_set> type_handler_set("set");
 
@@ -352,19 +355,6 @@ Temporal_hybrid::Temporal_hybrid(THD *thd, Item *item, date_mode_t fuzzydate)
 {
   if (item->get_date(thd, this, fuzzydate))
     time_type= MYSQL_TIMESTAMP_NONE;
-}
-
-
-uint Timestamp::binary_length_to_precision(uint length)
-{
-  switch (length) {
-  case 4: return 0;
-  case 5: return 2;
-  case 6: return 4;
-  case 7: return 6;
-  }
-  DBUG_ASSERT(0);
-  return 0;
 }
 
 
@@ -9182,6 +9172,7 @@ Type_handler_time_common::Item_val_native_with_conversion_result(THD *thd,
   if (item->type_handler()->type_handler_for_native_format() ==
       &type_handler_time2)
     return item->val_native_result(thd, to);
+  // TODO: handle Type_handler_timestamp2_with_tz
   MYSQL_TIME ltime;
   if (item->get_date_result(thd, &ltime, Time::Options(thd)))
     return true;
@@ -9225,9 +9216,24 @@ Type_handler_timestamp_common::Item_val_native_with_conversion(THD *thd,
                                                                Item *item,
                                                                Native *to) const
 {
-  if (item->type_handler()->type_handler_for_native_format() ==
-      &type_handler_timestamp2)
-    return item->val_native(thd, to);
+  const Type_handler *item_th_fmt= item->type_handler()->
+                                  type_handler_for_native_format();
+  if (item_th_fmt == &type_handler_timestamp2)
+    return item->val_native(thd, to); // No data type conversion
+
+  if (item_th_fmt == &type_handler_timestamp2_with_tz)
+  {
+    // TIMESTAMP WITH TIME ZONE -> TIMESTAMP
+    const Type_extra_attributes eattr(item->type_extra_attributes());
+    const Time_zone *tz= static_cast<const Time_zone*>
+                           (eattr.get_attr_const_void_ptr(0));
+    Timestamp_with_tz_null ts=
+      Type_handler_timestamp2_with_tz::item_value_null(thd, item, tz);
+    return ts.is_null() ? true :
+                          Timestamp_or_zero_datetime(Timestamp(ts), false).
+                            to_native(to, item->datetime_precision(thd));
+  }
+
   Datetime dt(thd, item, Datetime::Options(TIME_NO_ZERO_IN_DATE, thd));
   return
     !dt.is_valid_datetime() ||
@@ -9251,6 +9257,7 @@ Type_handler_timestamp_common::Item_val_native_with_conversion_result(THD *thd,
   if (item->type_handler()->type_handler_for_native_format() ==
       &type_handler_timestamp2)
     return item->val_native_result(thd, to);
+  // TODO: handle Type_handler_timestamp2_with_tz
   return
     item->get_date_result(thd, &ltime,
                           Datetime::Options(TIME_NO_ZERO_IN_DATE, thd)) ||
@@ -9560,6 +9567,29 @@ bool Type_handler::can_return_extract_source(interval_type int_type) const
 {
   return type_collection() == &type_collection_std;
 }
+
+
+Session_env_dependency::Param
+Type_handler::type_conversion_dependency_from(const Type_handler *from) const
+{
+  const Type_handler *fmt= from->type_handler_for_native_format();
+  return fmt == &type_handler_timestamp2 ?
+         Session_env_dependency::SYS_VAR_TIME_ZONE_GMT_SEC_TO_TIME :
+         Session_env_dependency::NONE;
+}
+
+
+Session_env_dependency::Param
+Type_handler_timestamp_common::type_conversion_dependency_from(
+                                 const Type_handler *from) const
+{
+  const Type_handler *fmt= from->type_handler_for_native_format();
+  return fmt == &type_handler_timestamp2_with_tz ||
+         fmt == &type_handler_timestamp2 ?
+         Session_env_dependency::NONE :
+         Session_env_dependency::SYS_VAR_TIME_ZONE_TIME_TO_GMT_SEC;
+}
+
 
 /***************************************************************************/
 

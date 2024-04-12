@@ -2841,6 +2841,7 @@ Item_func_nullif::fix_length_and_dec(THD *thd)
   decimals= args[2]->decimals;
   unsigned_flag= args[2]->unsigned_flag;
   fix_char_length(args[2]->max_char_length());
+  Type_extra_attributes::operator=(args[2]->type_extra_attributes());
   set_maybe_null();
   m_arg0= args[0];
   convert_const_compared_to_int_field(thd);
