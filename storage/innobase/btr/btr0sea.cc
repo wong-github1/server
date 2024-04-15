@@ -1230,6 +1230,8 @@ next_rec:
 		prev_fold = fold;
 	}
 
+	ulonglong remove_rows_start_time;
+
 	if (UNIV_LIKELY_NULL(heap)) {
 		mem_heap_free(heap);
 	}
@@ -1258,7 +1260,7 @@ next_rec:
 		goto retry;
 	}
 
-	ulonglong remove_rows_start_time= microsecond_interval_timer();
+	remove_rows_start_time= microsecond_interval_timer();
 	for (i = 0; i < n_cached; i++) {
 
 		ha_remove_all_nodes_to_page(
