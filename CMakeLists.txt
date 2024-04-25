@@ -244,6 +244,29 @@ IF(SECURITY_HARDENED AND NOT WITH_ASAN AND NOT WITH_UBSAN AND NOT WITH_TSAN)
   MY_CHECK_AND_SET_COMPILER_FLAG("-D_FORTIFY_SOURCE=2" RELEASE RELWITHDEBINFO)
 ENDIF()
 
+OPTION(WITH_SPLIT_STACK "Use stack splitting (unlimited stack, see -fsplit-stack)" OFF)
+IF(WITH_SPLIT_STACK)
+  MY_CHECK_AND_SET_COMPILER_FLAG("-fsplit-stack -DWITH_SPLIT_STACK")
+  IF(NOT have_CXX__fsplit_stack__DWITH_SPLIT_STACK)
+    message(FATAL_ERROR "WITH_SPLIT_STACK required compiler option not supported: -fsplit-stack")
+  ENDIF()
+  MY_CHECK_AND_SET_COMPILER_FLAG("-fcf-protection=none")
+ENDIF()
+
+OPTION(WITH_GOLD "Use gold linker (required for correct split-stack work with non-split-stack libraries)" OFF)
+IF(WITH_GOLD)
+  MY_CHECK_AND_SET_LINKER_FLAG("-fuse-ld=gold")
+  IF(NOT HAVE_LINK_FLAG__fuse_ld_gold)
+    message(FATAL_ERROR "WITH_GOLD required linker option not supported: -fuse-ld=gold")
+  ENDIF()
+  MY_CHECK_AND_SET_COMPILER_FLAG("-DWITH_GOLD") # Triggers compilation of all files, may be disabled
+ENDIF()
+
+SET(WITH_GOLD_SS_ADJUST "0" CACHE STRING "--split-stack-adjust-size option for gold linker (0 means default)")
+IF(WITH_GOLD_SS_ADJUST)
+  MY_CHECK_AND_SET_LINKER_FLAG("-Wl,--split-stack-adjust-size,${WITH_GOLD_SS_ADJUST}")
+ENDIF()
+
 INCLUDE(wsrep)
 
 OPTION(WITH_DBUG_TRACE "Enable DBUG_ENTER()/DBUG_EXIT()" ON)

@@ -7428,6 +7428,7 @@ long max_stack_used;
 bool check_stack_overrun(THD *thd, long margin,
 			 uchar *buf __attribute__((unused)))
 {
+#ifndef WITH_SPLIT_STACK
   long stack_used;
   DBUG_ASSERT(thd == current_thd);
   if ((stack_used= available_stack_size(thd->thread_stack, &stack_used)) >=
@@ -7450,6 +7451,7 @@ bool check_stack_overrun(THD *thd, long margin,
 #ifndef DBUG_OFF
   max_stack_used= MY_MAX(max_stack_used, stack_used);
 #endif
+#endif /* WITH_SPLIT_STACK */
   return 0;
 }
 

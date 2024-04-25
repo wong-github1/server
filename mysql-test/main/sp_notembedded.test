@@ -1,5 +1,6 @@
 # Can't test with embedded server
 -- source include/not_embedded.inc
+-- source include/maybe_split_stack.inc
 # Disable concurrent inserts to avoid test failures
 set @old_concurrent_insert= @@global.concurrent_insert;
 set @@global.concurrent_insert= 0;
@@ -186,16 +187,27 @@ set @var=1|
 # disable log because error about stack overrun contains numbers which
 # depend on a system
 -- disable_result_log
--- error ER_STACK_OVERRUN_NEED_MORE
-call bug10100p(255, @var)|
--- error ER_STACK_OVERRUN_NEED_MORE
-call bug10100pt(1,255)|
--- error ER_STACK_OVERRUN_NEED_MORE
-call bug10100pv(1,255)|
--- error ER_STACK_OVERRUN_NEED_MORE
-call bug10100pd(1,255)|
--- error ER_STACK_OVERRUN_NEED_MORE
-call bug10100pc(1,255)|
+if (!$have_split_stack)
+{
+  -- error ER_STACK_OVERRUN_NEED_MORE
+  call bug10100p(255, @var)|
+  -- error ER_STACK_OVERRUN_NEED_MORE
+  call bug10100pt(1,255)|
+  -- error ER_STACK_OVERRUN_NEED_MORE
+  call bug10100pv(1,255)|
+  -- error ER_STACK_OVERRUN_NEED_MORE
+  call bug10100pd(1,255)|
+  -- error ER_STACK_OVERRUN_NEED_MORE
+  call bug10100pc(1,255)|
+}
+if ($have_split_stack)
+{
+  call bug10100p(255, @var)|
+  call bug10100pt(1,255)|
+  call bug10100pv(1,255)|
+  call bug10100pd(1,255)|
+  call bug10100pc(1,255)|
+}
 -- enable_result_log
 set @@max_sp_recursion_depth=0|
 
