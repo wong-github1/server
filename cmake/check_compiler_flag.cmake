@@ -33,6 +33,8 @@ MACRO (MY_CHECK_CXX_COMPILER_FLAG flag)
   SET(CMAKE_REQUIRED_FLAGS "${SAVE_CMAKE_REQUIRED_FLAGS}")
 ENDMACRO()
 
+SET(COMPILATION_FLAGS "" CACHE INTERNAL "")
+
 FUNCTION(MY_CHECK_AND_SET_COMPILER_FLAG flag_to_set)
   # At the moment this is gcc-only.
   # Let's avoid expensive compiler tests on Windows:
@@ -54,4 +56,14 @@ FUNCTION(MY_CHECK_AND_SET_COMPILER_FLAG flag_to_set)
       ENDIF()
     ENDIF()
   ENDFOREACH()
+
+  IF (have_CXX_${result} AND (flag_to_set MATCHES "^-Wl," OR (
+    NOT flag_to_set MATCHES "^-W" AND
+    NOT flag_to_set MATCHES "^-g")))
+    SET(prefix "")
+    IF (COMPILATION_FLAGS)
+      SET(prefix "${COMPILATION_FLAGS} ")
+    ENDIF()
+    SET(COMPILATION_FLAGS "${prefix}${flag_to_set}" CACHE INTERNAL "")
+  ENDIF()
 ENDFUNCTION()
