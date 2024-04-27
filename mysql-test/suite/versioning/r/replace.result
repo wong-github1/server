@@ -61,3 +61,18 @@ connection con1;
 replace into t1 values (1),(2);
 ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
 drop table t1;
+#
+# MDEV-15990 REPLACE on a precise-versioned table returns duplicate key
+# error (ER_DUP_ENTRY)
+#
+create or replace table t1 (
+pk int primary key,  i int,
+row_start bigint unsigned as row start,
+row_end bigint unsigned as row end,
+period for system_time(row_start, row_end)
+) engine=InnoDB with system versioning;
+replace into t1 (pk,i) values (1,10),(1,100),(1,1000);
+select pk, i, row_end from t1 for system_time all;
+pk	i	row_end
+1	1000	18446744073709551615
+drop table t1;

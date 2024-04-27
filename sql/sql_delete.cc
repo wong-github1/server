@@ -279,7 +279,8 @@ int update_portion_of_time(THD *thd, TABLE *table,
 inline
 int TABLE::delete_row()
 {
-  if (!versioned(VERS_TIMESTAMP) || !vers_end_field()->is_max())
+  if (!versioned(VERS_TIMESTAMP) ||
+      !vers_end_field()->is_max(vers_end_field()->ptr))
     return file->ha_delete_row(record[0]);
 
   store_record(this, record[1]);

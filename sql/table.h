@@ -1804,8 +1804,8 @@ public:
   }
 
 
-  ulonglong vers_start_id() const;
-  ulonglong vers_end_id() const;
+  ulonglong vers_start_id(const uchar *ptr) const;
+  ulonglong vers_end_id(const uchar *ptr) const;
 
   int update_generated_fields();
   void period_prepare_autoinc();
