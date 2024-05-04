@@ -554,7 +554,16 @@ void trx_disconnect_prepared(trx_t *trx)
   trx->read_view.close();
   trx_sys.trx_list.freeze();
   trx->is_recovered= true;
+  /*
+    Take the lock_sys.wait_mutex around releasing the THD associated with the
+    prepared transaction. This way, lock_wait() will see a consistent picture
+    while processing locking state: either it runs before clearing the
+    trx->mysql_thd, and sees the lock owned by a specific THD; or it runs after
+    and sees a lock not associated with THD (but not some mixture).
+  */
+  mysql_mutex_lock(&lock_sys.wait_mutex);
   trx->mysql_thd= NULL;
+  mysql_mutex_unlock(&lock_sys.wait_mutex);
   trx_sys.trx_list.unfreeze();
   /* todo/fixme: suggest to do it at innodb prepare */
   trx->will_lock= false;
