@@ -5426,6 +5426,7 @@ thd_rpl_deadlock_check(MYSQL_THD thd, MYSQL_THD other_thd)
 
     return 0;
   }
+  DBUG_EXECUTE_IF("xa_prepare_stray_deadlock_kill", my_sleep(2000000););
   /*
     This transaction is about to wait for another transaction that is required
     by replication binlog order to commit after. This would cause a deadlock.

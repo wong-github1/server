@@ -1157,6 +1157,7 @@ static bool slave_applier_reset_xa_trans(THD *thd)
   }
   thd->transaction->all.ha_list= 0;
 
+  DBUG_EXECUTE_IF("xa_prepare_stray_deadlock_kill", my_sleep(2000000););
   ha_close_connection(thd);
   thd->transaction->cleanup();
   thd->transaction->all.reset();

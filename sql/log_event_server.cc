@@ -4452,6 +4452,7 @@ int Xid_apply_log_event::do_apply_event(rpl_group_info *rgi)
       */
       wait_for_pending_deadlock_kill(thd, thd->rgi_slave);
       thd->reset_killed();
+      DBUG_EXECUTE_IF("xa_prepare_stray_deadlock_kill", my_sleep(2000000););
     }
 
     if ((err= do_record_gtid(thd, rgi, false, &hton, true)))

@@ -1,0 +1,74 @@
+--source include/have_debug.inc
+--source include/have_innodb.inc
+--source include/have_binlog_format_mixed.inc
+--source include/master-slave.inc
+
+ALTER TABLE mysql.gtid_slave_pos ENGINE=InnoDB;
+CREATE TABLE t1 (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (1,0), (2,0), (3,0), (4,0), (5,0);
+--sync_slave_with_master
+--source include/stop_slave.inc
+SET @old_parallel_threads                    = @@GLOBAL.slave_parallel_threads;
+SET @@global.slave_parallel_threads          = 2;
+SET @old_slave_domain_parallel_threads       = @@GLOBAL.slave_domain_parallel_threads;
+SET @@global.slave_domain_parallel_threads = 1;
+SET @old_parallel_mode               = @@GLOBAL.slave_parallel_mode;
+SET @@global.slave_parallel_mode     ='optimistic';
+CHANGE MASTER TO master_use_gtid= slave_pos;
+SET @old_dbug= @@GLOBAL.debug_dbug;
+SET GLOBAL debug_dbug= "+d,xa_prepare_stray_deadlock_kill";
+
+--connection slave1
+BEGIN;
+SELECT * FROM t1 WHERE a=1 FOR UPDATE;
+
+--connect(con1,localhost,root,,)
+SET SESSION gtid_domain_id=1;
+XA START 't1';
+UPDATE t1 SET b=1 WHERE a=1;
+UPDATE t1 SET b=1 WHERE a=2;
+XA END 't1';
+XA PREPARE 't1';
+
+XA COMMIT 't1';
+
+--connection master1
+XA START 't2';
+UPDATE t1 SET b=2 WHERE a=2;
+XA END 't2';
+XA PREPARE 't2';
+
+XA COMMIT 't2';
+
+--connection master
+--source include/save_master_gtid.inc
+
+--connection slave
+--source include/start_slave.inc
+# Wait until trx t2 is prepared (t3 will be waiting)
+--sleep 1
+--connection slave1
+ROLLBACK;
+# Now at time 1s, t2 will decide to deadlock kill t1, but sleep
+# At time 2s, t1 will clear kill status and sleep again 
+# At time 3s, t2 will deadlock kill t1
+# At time 4s, t1 will wakeup and try to update gtid_slave_pos, fail due to kill
+--connection slave
+--let $slave_timeout= 20
+--source include/sync_with_master_gtid.inc
+
+SET GLOBAL debug_dbug= @old_dbug;
+
+SELECT * FROM t1 ORDER BY a;
+
+--connection master
+DROP TABLE t1;
+
+--connection slave
+--source include/stop_slave.inc
+SET @@global.slave_parallel_mode           = @old_parallel_mode;
+SET @@global.slave_parallel_threads        = @old_parallel_threads;
+SET @@global.slave_domain_parallel_threads = @old_slave_domain_parallel_threads;
+--source include/start_slave.inc
+
+--source include/rpl_end.inc
