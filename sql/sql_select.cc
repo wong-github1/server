@@ -4765,8 +4765,8 @@ void JOIN::exec_inner()
       DBUG_ASSERT(error == 0);
       if (cond_value != Item::COND_FALSE &&
           having_value != Item::COND_FALSE &&
-          (!conds || conds->val_int()) &&
-          (!having || having->val_int()))
+          (!conds || conds->val_bool()) &&
+          (!having || having->val_bool()))
       {
 	if (do_send_rows &&
             (procedure ? (procedure->send_row(procedure_fields_list) ||
@@ -4799,11 +4799,11 @@ void JOIN::exec_inner()
   */
   if (!zero_result_cause &&
       exec_const_cond && !(select_options & SELECT_DESCRIBE) &&
-      !exec_const_cond->val_int())
+      !exec_const_cond->val_bool())
     zero_result_cause= "Impossible WHERE noticed after reading const tables";
 
   /* 
-    We've called exec_const_cond->val_int(). This may have caused an error.
+    We've called exec_const_cond->val_bool(). This may have caused an error.
   */
   if (unlikely(thd->is_error()))
   {
@@ -12418,7 +12418,7 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
             bool const_cond_result;
             {
               Json_writer_array a(thd, "computing_condition");
-              const_cond_result= const_cond->val_int() != 0;
+              const_cond_result= const_cond->val_bool() != 0;
             }
             if (!const_cond_result)
             {
@@ -15572,7 +15572,7 @@ return_zero_rows(JOIN *join, select_result *result, List<TABLE_LIST> *tables,
     join->no_rows_in_result_called= 1;
     while ((item= it++))
       item->no_rows_in_result();
-    if (having && having->val_int() == 0)
+    if (having && having->val_bool() == false)
       send_row=0;
   }
 
@@ -16918,6 +16918,7 @@ Item *eliminate_item_equal(THD *thd, COND *cond, COND_EQUAL *upper_levels,
         return 0;
       eq_item->eval_not_null_tables(0);
       eq_item->quick_fix_field();
+      eq_item->base_flags|= item_base_t::IS_COND;
     }
     current_sjm= field_sjm;
   }
@@ -21360,7 +21361,7 @@ do_select(JOIN *join, Procedure *procedure)
       sufficient to check only the condition pseudo_bits_cond.
     */
     DBUG_ASSERT(join->outer_ref_cond == NULL);
-    if (!join->pseudo_bits_cond || join->pseudo_bits_cond->val_int())
+    if (!join->pseudo_bits_cond || join->pseudo_bits_cond->val_bool())
     {
       // HAVING will be checked by end_select
       error= (*end_select)(join, 0, 0);
@@ -21421,7 +21422,7 @@ do_select(JOIN *join, Procedure *procedure)
 
     JOIN_TAB *join_tab= join->join_tab +
                         (join->tables_list ? join->const_tables : 0);
-    if (join->outer_ref_cond && !join->outer_ref_cond->val_int())
+    if (join->outer_ref_cond && !join->outer_ref_cond->val_bool())
       error= NESTED_LOOP_NO_MORE_ROWS;
     else
       error= join->first_select(join,join_tab,0);
@@ -21999,7 +22000,7 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
 
   if (select_cond)
   {
-    select_cond_result= MY_TEST(select_cond->val_int());
+    select_cond_result= MY_TEST(select_cond->val_bool());
 
     /* check for errors evaluating the condition */
     if (unlikely(join->thd->is_error()))
@@ -22395,7 +22396,7 @@ join_read_const_table(THD *thd, JOIN_TAB *tab, POSITION *pos)
     (*tab->on_expr_ref)->update_used_tables();
     DBUG_ASSERT((*tab->on_expr_ref)->const_item());
 #endif
-    if ((table->null_row= MY_TEST((*tab->on_expr_ref)->val_int() == 0)))
+    if ((table->null_row= MY_TEST((*tab->on_expr_ref)->val_bool() == 0)))
       mark_as_null_row(table);  
   }
   if (!table->null_row && ! tab->join->mixed_implicit_grouping)
@@ -23151,7 +23152,7 @@ end_send(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     /* Copy non-aggregated fields when loose index scan is used. */
     copy_fields(&join->tmp_table_param);
   }
-  if (join->having && join->having->val_int() == 0)
+  if (join->having && join->having->val_bool() == 0)
     DBUG_RETURN(NESTED_LOOP_OK);               // Didn't match having
   if (join->procedure)
   {
@@ -23342,7 +23343,7 @@ end_send_group(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
             while ((item= it++))
               item->no_rows_in_result();
 	  }
-	  if (join->having && join->having->val_int() == 0)
+	  if (join->having && join->having->val_bool() == 0)// TODO: tests
 	    error= -1;				// Didn't satisfy having
 	  else
 	  {
@@ -23452,7 +23453,7 @@ end_write(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
     if (copy_funcs(join_tab->tmp_table_param->items_to_copy, join->thd))
       DBUG_RETURN(NESTED_LOOP_ERROR);           /* purecov: inspected */
 
-    if (likely(!join_tab->having || join_tab->having->val_int()))
+    if (likely(!join_tab->having || join_tab->having->val_bool()))
     {
       int error;
       join->found_records++;
@@ -23703,7 +23704,7 @@ end_write_group(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
         }
         copy_sum_funcs(join->sum_funcs,
                        join->sum_funcs_end[send_group_parts]);
-	if (!join_tab->having || join_tab->having->val_int())
+	if (!join_tab->having || join_tab->having->val_bool())
 	{
           int error= table->file->ha_write_tmp_row(table->record[0]);
           if (unlikely(error) &&
@@ -25604,7 +25605,7 @@ static int remove_dup_with_compare(THD *thd, TABLE *table, Field **first_field,
 	break;
       goto err;
     }
-    if (having && !having->val_int())
+    if (having && !having->val_bool())
     {
       if (unlikely((error= file->ha_delete_row(record))))
 	goto err;
@@ -25742,7 +25743,7 @@ static int remove_dup_with_hash_index(THD *thd, TABLE *table,
 	break;
       goto err;
     }
-    if (having && !having->val_int())
+    if (having && !having->val_bool())
     {
       if (unlikely((error= file->ha_delete_row(record))))
 	goto err;
@@ -27879,7 +27880,7 @@ int JOIN::rollup_send_data(uint idx)
     int res= 0;
     /* Get reference pointers to sum functions in place */
     copy_ref_ptr_array(ref_ptrs, rollup.ref_pointer_arrays[i]);
-    if ((!having || having->val_int()))
+    if ((!having || having->val_bool()))
     {
       if (send_records < unit->lim.get_select_limit() && do_send_rows &&
 	  (res= result->send_data_with_check(rollup.fields[i],
