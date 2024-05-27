@@ -2459,7 +2459,7 @@ String *Item_func_json_array_insert::val_str(String *str)
           (path_setup_nwc(&c_path->p,s_p->charset(),(const uchar *) s_p->ptr(),
                           (const uchar *) s_p->ptr() + s_p->length()) ||
            c_path->p.last_step - 1 < (json_path_step_t*)(c_path->p.steps.buffer) ||
--           ((c_path->p.last_step))->type != JSON_PATH_ARRAY))
+           c_path->p.last_step->type != JSON_PATH_ARRAY))
       {
         if (c_path->p.s.error == 0)
           c_path->p.s.error= SHOULD_END_WITH_ARRAY;
@@ -2501,7 +2501,7 @@ String *Item_func_json_array_insert::val_str(String *str)
 
     item_pos= 0;
     n_item= 0;
-    corrected_n_item= ((c_path->p.last_step+(sizeof(json_path_step_t))))->n_item;
+    corrected_n_item= (c_path->p.last_step+1)->n_item;
     if (corrected_n_item < 0)
     {
       int array_size;
@@ -4565,7 +4565,6 @@ int Arg_comparator::compare_json_str_basic(Item *j, Item *s)
      {
        if (set_null)
          owner->null_value= 0;
-       mem_root_dynamic_array_free(&je.stack);
        return sortcmp(js, str, compare_collation());
      }
   }
@@ -4573,7 +4572,6 @@ int Arg_comparator::compare_json_str_basic(Item *j, Item *s)
 error:
   if (set_null)
     owner->null_value= 1;
-  mem_root_dynamic_array_free(&je.stack);
   return -1;
 }
 
@@ -5892,7 +5890,6 @@ bool Item_func_json_array_intersect::fix_length_and_dec(THD *thd)
   prepare_json_and_create_hash(&je1, js1);
 
 end:
-  mem_root_dynamic_array_free(&je1.stack);
   set_maybe_null();
   return FALSE;
 }
@@ -6044,7 +6041,6 @@ bool Item_func_json_object_filter_keys::fix_length_and_dec(THD *thd)
   if (args[1]->null_value)
   {
     null_value= 1;
-    mem_root_dynamic_array_free(&je2.stack);
     return FALSE;
   }
 
@@ -6060,14 +6056,12 @@ bool Item_func_json_object_filter_keys::fix_length_and_dec(THD *thd)
     if (je2.s.error)
       report_json_error(js2, &je2, 0);
     null_value= 1;
-    mem_root_dynamic_array_free(&je2.stack);
     return FALSE;
   }
 
   max_length= args[0]->max_length;
   set_maybe_null();
 
-  mem_root_dynamic_array_free(&je2.stack);
   return FALSE;
 }
 

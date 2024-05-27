@@ -770,7 +770,6 @@ json_norm_build(struct json_norm_value *root,
   err= json_scan_start(&je, cs, (const uchar *)s, (const uchar *)(s + size));
   if (json_read_value(&je))
   {
-    mem_root_dynamic_array_free(&je.stack);
     return err;
   }
   err= json_norm_value_init(root, &je);
@@ -781,12 +780,10 @@ json_norm_build(struct json_norm_value *root,
     err= json_norm_parse(root, &je);
     if (err)
     {
-      mem_root_dynamic_array_free(&je.stack);
       return err;
     }
   }
 
-  mem_root_dynamic_array_free(&je.stack);
   return err;
 }
 

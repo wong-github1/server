@@ -809,7 +809,6 @@ bool Histogram_json_hb::parse(MEM_ROOT *mem_root, const char *db_name,
       // Some unknown member. Skip it.
       if (json_skip_key(&je))
       {
-        mem_root_dynamic_array_free(&je.stack);
         return 1;
       }
     }
@@ -834,7 +833,6 @@ bool Histogram_json_hb::parse(MEM_ROOT *mem_root, const char *db_name,
   DBUG_RETURN(false); // Ok
 err:
   THD *thd= current_thd;
-  mem_root_dynamic_array_free(&je.stack);
   push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
                       ER_JSON_HISTOGRAM_PARSE_FAILED,
                       ER_THD(thd, ER_JSON_HISTOGRAM_PARSE_FAILED),

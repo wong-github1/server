@@ -52,7 +52,6 @@ static void parse_json(const uchar *j, struct st_parse_result *result)
 
   if (json_scan_start(&je, ci, s_e(j)))
   {
-    mem_root_dynamic_array_free(&je.stack);
     return;
   }
 
@@ -84,7 +83,6 @@ static void parse_json(const uchar *j, struct st_parse_result *result)
     };
   } while (json_scan_next(&je) == 0);
 
-  mem_root_dynamic_array_free(&je.stack);
   result->error= je.s.error;
 }
 
@@ -142,7 +140,6 @@ test_path_parsing()
      "path");
 
   error:
-    free(p.steps);
     return;
 }
 
@@ -205,10 +202,6 @@ test_search()
   ok(n_matches == 3, "search");
 
   end:
-  mem_root_dynamic_array_free(&je.stack);
-  free(p.steps);
-  je.stack= NULL;
-  p.steps= NULL;
   return;
 }
 

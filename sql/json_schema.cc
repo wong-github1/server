@@ -432,7 +432,6 @@ mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
       if (json_skip_level(&temp_je))
       {
         curr_je= temp_je;
-        free(&temp_je_2.stack);
         return true;
       }
       end= (char*)temp_je.s.c_str;
@@ -447,13 +446,11 @@ mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
       if (json_read_value(&temp_je_2))
       {
         curr_je= temp_je;
-        free(&temp_je_2.stack);
         return true;
       }
       json_get_normalized_string(&temp_je_2, &a_res, &err);
       if (err)
       {
-        free(&temp_je_2.stack);
         return true;
       }
     }
@@ -464,13 +461,11 @@ mem_root_dynamic_array_init(PSI_NOT_INSTRUMENTED,
         !strncmp((const char*)const_json_value, a_res.ptr(),
                   a_res.length()))
     {
-      free(&temp_je_2.stack);
       return false;
     }
     return true;
   }
 
-  free(&temp_je_2.stack);
   return false;
 }
 

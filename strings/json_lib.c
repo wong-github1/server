@@ -1914,7 +1914,6 @@ enum json_types json_type(const char *js, const char *js_end,
 
   json_scan_start(&je, &my_charset_utf8mb4_bin,(const uchar *) js,
                   (const uchar *) js_end);
-  mem_root_dynamic_array_free(&je.stack);
   return smart_read_value(&je, value, value_len);
 }
 
@@ -1960,7 +1959,6 @@ enum json_types json_get_array_item(const char *js, const char *js_end,
   }
 
 err_return:
-  mem_root_dynamic_array_free(&je.stack);
   return JSV_BAD_JSON;
 }
 
@@ -2030,7 +2028,6 @@ enum json_types json_get_object_key(const char *js, const char *js_end,
   }
 
 err_return:
-  mem_root_dynamic_array_free(&je.stack);
   return JSV_BAD_JSON;
 }
 
@@ -2128,7 +2125,6 @@ int json_locate_key(const char *js, const char *js_end,
 
         if (*comma_pos == 1)
         {
-          mem_root_dynamic_array_free(&je.stack);
           return 0;
         }
 
@@ -2152,13 +2148,11 @@ int json_locate_key(const char *js, const char *js_end,
 
     case JST_OBJ_END:
       *key_start= NULL;
-       mem_root_dynamic_array_free(&je.stack);
        return 0;
     }
   }
 
 err_return:
-  mem_root_dynamic_array_free(&je.stack);
   return 1;
 
 }
