@@ -1354,6 +1354,9 @@ bool mysql_derived_reinit(THD *thd, LEX *lex, TABLE_LIST *derived)
                        derived->get_unit()));
   st_select_lex_unit *unit= derived->get_unit();
 
+  if (derived->original_names_are_set)
+    unit->first_select()->set_item_list_names(derived->original_names);
+
   // reset item names to that saved after wildcard expansion in JOIN::prepare
   for(st_select_lex *sl= unit->first_select(); sl; sl= sl->next_select())
     sl->restore_item_list_names();
@@ -1566,6 +1569,7 @@ bool pushdown_cond_for_derived(THD *thd, Item *cond, TABLE_LIST *derived)
     if (sl != first_sl)
     {
       DBUG_ASSERT(sl->item_list.elements == first_sl->item_list.elements);
+      sl->save_item_list_names(thd);
       List_iterator_fast<Item> it(sl->item_list);
       List_iterator_fast<Item> nm_it(unit->types);
       while (Item *item= it++)
