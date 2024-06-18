@@ -580,6 +580,7 @@ void fsp_system_tablespace_truncate();
 void fsp_shrink_temp_space();
 
 extern void fsp_binlog_test(const uchar *data, uint32_t len);
+extern void fsp_binlog_trx(trx_t *trx, mtr_t *mtr);
 
 #ifndef UNIV_DEBUG
 # define fsp_init_file_page(space, block, mtr) fsp_init_file_page(block, mtr)
