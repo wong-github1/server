@@ -1223,7 +1223,12 @@ inline void log_t::resize_write(lsn_t lsn, const byte *end, size_t len,
         lsn+= l;
       }
       lsn-= resizing;
-      s= START_OFFSET + lsn % resize_capacity;
+      if (UNIV_UNLIKELY(lsn >= resize_capacity))
+      {
+        lsn-= resize_capacity;
+        resize_lsn.fetch_add(resize_capacity);
+      }
+      s= START_OFFSET + lsn;
 
       if (UNIV_UNLIKELY(end < &buf[START_OFFSET]))
       {
