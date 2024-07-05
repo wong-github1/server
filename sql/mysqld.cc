@@ -7509,6 +7509,7 @@ SHOW_VAR status_vars[]= {
 #ifndef DBUG_OFF
   SHOW_FUNC_ENTRY("Debug",     &debug_status_func),
 #endif
+  {"Dbug_time_spent",          (char*) offsetof(STATUS_VAR, dbug_time_spent), SHOW_LONG_STATUS},
   {"Delayed_errors",           (char*) &delayed_insert_errors,  SHOW_LONG},
   {"Delayed_insert_threads",   (char*) &delayed_insert_threads, SHOW_LONG_NOFLUSH},
   {"Delayed_writes",           (char*) &delayed_insert_writes,  SHOW_LONG},
