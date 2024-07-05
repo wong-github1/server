@@ -71,7 +71,7 @@ class ha_myisam final : public handler
   int open(const char *name, int mode, uint test_if_locked) override;
   int close(void) override;
   int write_row(const uchar * buf) override;
-  int update_row(const uchar * old_data, const uchar * new_data) override;
+  int update_row(const uchar * old_data, const uchar * new_data) final;
   int delete_row(const uchar * buf) override;
   int index_read_map(uchar *buf, const uchar *key, key_part_map keypart_map,
                      enum ha_rkey_function find_flag) override;
@@ -83,6 +83,7 @@ class ha_myisam final : public handler
   int index_first(uchar * buf) override;
   int index_last(uchar * buf) override;
   int index_next_same(uchar *buf, const uchar *key, uint keylen) override;
+  Update_func get_update_row_func() const override { return (Update_func)&ha_myisam::update_row; }
   int ft_init() override
   {
     if (!ft_handler)

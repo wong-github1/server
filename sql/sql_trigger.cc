@@ -2477,7 +2477,7 @@ end:
     @retval TRUE  on error.
 */
 
-bool Table_triggers_list::process_triggers(THD *thd,
+int Table_triggers_list::process_triggers(THD *thd,
                                            trg_event_type event,
                                            trg_action_time_type time_type,
                                            bool old_row_is_record1)

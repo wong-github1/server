@@ -59,6 +59,9 @@
 #include "semisync_master.h"
 
 #include "wsrep_mysqld.h"
+#include "scope.h"
+#include "sql_insert.h"
+
 #ifdef WITH_WSREP
 #include "wsrep_binlog.h"
 #include "wsrep_xid.h"
@@ -7372,6 +7375,27 @@ int handler::binlog_log_row(const uchar *before_record,
     error= binlog_log_row_to_binlog(table, before_record, after_record,
                                     log_func, row_logging_has_trans);
 
+#ifdef WITH_WSREP
+  THD *thd= ha_thd();
+    if (WSREP_NNULL(thd))
+    {
+      /* for streaming replication, the following wsrep_after_row()
+      may replicate a fragment, so we have to declare potential PA
+      unsafe before that */
+      if (table->s->primary_key == MAX_KEY && wsrep_thd_is_local(thd))
+      {
+        WSREP_DEBUG("marking trx as PA unsafe pk %d", table->s->primary_key);
+        if (thd->wsrep_cs().mark_transaction_pa_unsafe())
+          WSREP_DEBUG("session does not have active transaction,"
+                      " can not mark as PA unsafe");
+      }
+
+      if (!error && table_share->tmp_table == NO_TMP_TABLE &&
+          ht->flags & HTON_WSREP_REPLICATION)
+        error= wsrep_after_row(thd);
+    }
+#endif /* WITH_WSREP */
+
 #ifdef HAVE_REPLICATION
   if (unlikely(!error && table->s->online_alter_binlog && is_root_handler()))
     error= online_alter_log_row(table, before_record, after_record,
@@ -7379,6 +7403,12 @@ int handler::binlog_log_row(const uchar *before_record,
 #endif // HAVE_REPLICATION
 
   DBUG_RETURN(error);
+}
+
+int handler::log_row_for_update(const uchar *before_record, const uchar *after_record)
+{
+  return binlog_log_row(before_record, after_record,
+                        Update_rows_log_event::binlog_row_logging_function);
 }
 
 
@@ -7664,17 +7694,16 @@ int handler::check_duplicate_long_entries(const uchar *new_rec)
     key as a parameter in normal insert key should be -1
     @returns 0 if no duplicate else returns error
   */
-int handler::check_duplicate_long_entries_update(const uchar *new_rec)
+int handler::check_duplicate_long_entries_update(const uchar *old_rec, const uchar *new_rec)
 {
   Field *field;
   uint key_parts;
   KEY *keyinfo;
   KEY_PART_INFO *keypart;
-  /*
-     Here we are comparing whether new record and old record are same
-     with respect to fields in hash_str
-   */
-  uint reclength= (uint) (table->record[1] - table->record[0]);
+
+  uint saved_status= table->status;
+  SCOPE_EXIT([this, saved_status]{ table->status= saved_status; });
+  my_ptrdiff_t offset= old_rec - new_rec;
 
   for (uint i= 0; i < table->s->keys; i++)
   {
@@ -7692,8 +7721,7 @@ int handler::check_duplicate_long_entries_update(const uchar *new_rec)
           cmp_binary_offset cannot differentiate between null and empty string
           So also check for that too
         */
-        if((field->is_null(0) != field->is_null(reclength)) ||
-                               field->cmp_offset(reclength))
+        if((field->is_null(0) != field->is_null(offset)) || field->cmp_offset(offset))
         {
           if((error= check_duplicate_long_entry_key(new_rec, i)))
             return error;
@@ -7719,6 +7747,9 @@ int handler::ha_check_overlaps(const uchar *old_data, const uchar* new_data)
     return 0;
   if (table->versioned() && !table->vers_end_field()->is_max())
     return 0;
+
+  uint saved_status= table->status;
+  SCOPE_EXIT([this, saved_status]{ table->status= saved_status; });
 
   const bool is_update= old_data != NULL;
   uchar *record_buffer= lookup_buffer + table_share->max_unique_length
@@ -7955,10 +7986,41 @@ int handler::ha_write_row(const uchar *buf)
   DBUG_RETURN(error);
 }
 
-
-int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
+void handler::build_ha_update_execution_plan(Update_func funcs[MAX_UPDATE_FUNCS],
+                                             Update_execution_markup *array_spec,
+                                             uint offset,
+                                             bool with_bulk)
 {
-  int error;
+  uint next= 0;
+  if (table_share->period.unique_keys)
+    funcs[next++]= &handler::ha_check_overlaps;
+  if (table_share->long_unique_table)
+    funcs[next++]= &handler::check_duplicate_long_entries_update;
+
+  array_spec->mark_trx_pos= next + offset;
+  funcs[next++]= &handler::mark_trx_read_write_and_inc_update_stats;
+
+  bool have_traces= tracker != NULL || m_psi != NULL;
+#if defined(HAVE_DTRACE) && !defined(DISABLE_DTRACE)
+  have_traces= true;
+#endif
+
+  funcs[next++]= with_bulk ? &handler::bulk_update_row_optimized
+                           : have_traces ? &handler::update_row_traced : get_update_row_func();
+
+  bool have_wsrep= IF_WSREP(WSREP_NNULL(ha_thd()), false);
+
+  if (row_logging || table_share->online_alter_binlog || have_wsrep)
+    funcs[next++]= &handler::log_row_for_update;
+
+  array_spec->ha_row_done_pos= next + offset;
+  funcs[next++]= NULL;
+  DBUG_ASSERT(next <= MAX_UPDATE_FUNCS);
+}
+
+
+int handler::update_row_traced(const uchar * old_data, const uchar * new_data)
+{
   DBUG_ASSERT(table_share->tmp_table != NO_TMP_TABLE ||
               m_lock_type == F_WRLCK);
   /*
@@ -7967,52 +8029,27 @@ int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
    */
   DBUG_ASSERT(new_data == table->record[0]);
   DBUG_ASSERT(old_data == table->record[1]);
-
-  uint saved_status= table->status;
-  error= ha_check_overlaps(old_data, new_data);
-
-  if (!error && table->s->long_unique_table && is_root_handler())
-    error= check_duplicate_long_entries_update(new_data);
-  table->status= saved_status;
-
-  if (error)
-    return error;
-
+  int error= 0;
   MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
   increment_statistics(&SSV::ha_update_count);
 
   TABLE_IO_WAIT(tracker, PSI_TABLE_UPDATE_ROW, active_index, 0,
-                      { error= update_row(old_data, new_data);})
+                { error= update_row(old_data, new_data);})
 
   MYSQL_UPDATE_ROW_DONE(error);
-  if (likely(!error))
-  {
-    rows_changed++;
-    Log_func *log_func= Update_rows_log_event::binlog_row_logging_function;
-    error= binlog_log_row(old_data, new_data, log_func);
+  return error;
+}
 
-#ifdef WITH_WSREP
-    THD *thd= ha_thd();
-    if (WSREP_NNULL(thd))
-    {
-      /* for streaming replication, the following wsrep_after_row()
-      may replicate a fragment, so we have to declare potential PA
-      unsafe before that */
-      if (table->s->primary_key == MAX_KEY && wsrep_thd_is_local(thd))
-      {
-        WSREP_DEBUG("marking trx as PA unsafe pk %d", table->s->primary_key);
-        if (thd->wsrep_cs().mark_transaction_pa_unsafe())
-          WSREP_DEBUG("session does not have active transaction,"
-                      " can not mark as PA unsafe");
-      }
+int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
+{
+  Update_func funcs[MAX_UPDATE_FUNCS];
+  Update_execution_markup array_spec {};
+  build_ha_update_execution_plan(funcs, &array_spec, 0, false);
 
-      if (!error && table_share->tmp_table == NO_TMP_TABLE &&
-          ht->flags & HTON_WSREP_REPLICATION)
-        error= wsrep_after_row(thd);
-    }
-#endif /* WITH_WSREP */
-  }
+  int error= 0;
+  for (Update_func *f= funcs; *f && likely(!error); f++)
+    error= (table->file->**f)(table->record[1], table->record[0]);
   return error;
 }
 

@@ -244,7 +244,7 @@ public:
   bool drop_trigger(THD *thd, TABLE_LIST *table,
                     LEX_CSTRING *sp_name,
                     String *stmt_query, DDL_LOG_STATE *ddl_log_state);
-  bool process_triggers(THD *thd, trg_event_type event,
+  int process_triggers(THD *thd, trg_event_type event,
                         trg_action_time_type time_type,
                         bool old_row_is_record1);
   void empty_lists();

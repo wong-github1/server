@@ -3530,6 +3530,37 @@ public:
   int ha_delete_row(const uchar * buf);
   void ha_release_auto_increment();
 
+  static constexpr int MAX_UPDATE_FUNCS= 10;
+  typedef int (handler::*Update_func)(const uchar * old_data, const uchar * new_data);
+
+  struct Update_execution_markup
+  {
+    uint mark_trx_pos;
+    uint ha_row_done_pos;
+    uint compare_skips_to_here;
+    uint all_done;
+  };
+  void build_ha_update_execution_plan(handler::Update_func funcs[10], handler::Update_execution_markup *array_spec,
+                                      uint offset, bool with_bulk);
+
+  int update_row_traced(const uchar * old_data, const uchar * new_data);
+  int bulk_update_row_optimized(const uchar * old_data, const uchar * new_data);
+
+  int inc_update_stats(const uchar*, const uchar*);
+  int mark_trx_read_write_and_inc_update_stats(const uchar*, const uchar*);
+  int vers_insert_history(const uchar *, const uchar *);
+  int period_make_inserts(const uchar *, const uchar *);
+  int process_after_update_triggers(const uchar *, const uchar *);
+  int dec_limit_for_update(const uchar *, const uchar *);
+  int check_view_conds(const uchar *, const uchar *);
+  int cut_fields_for_portion_of_time(const uchar *, const uchar *);
+  int invoke_before_triggers(const uchar *, const uchar *);
+  int compare_records(const uchar *, const uchar *);
+  int vers_update_end(const uchar *, const uchar *);
+  virtual Update_func get_update_row_func() const { return &handler::update_row; }
+
+
+
   inline bool keyread_enabled() { return keyread < MAX_KEY; }
   inline int ha_start_keyread(uint idx)
   {
@@ -5079,6 +5110,7 @@ public:
   int binlog_log_row(const uchar *before_record,
                      const uchar *after_record,
                      Log_func *log_func);
+  int log_row_for_update(const uchar *before_record, const uchar *after_record);
 
   inline void clear_cached_table_binlog_row_based_flag()
   {
@@ -5103,6 +5135,7 @@ public:
     }
   }
 
+  void mark_trx_read_write_internal();
 private:
   /* Cache result to avoid extra calls */
   inline void mark_trx_read_write()
@@ -5115,13 +5148,13 @@ private:
   }
 
   bool check_old_types() const;
-  void mark_trx_read_write_internal();
   bool check_table_binlog_row_based_internal();
 
   int create_lookup_handler();
   void alloc_lookup_buffer();
+public:
   int check_duplicate_long_entries(const uchar *new_rec);
-  int check_duplicate_long_entries_update(const uchar *new_rec);
+  int check_duplicate_long_entries_update(const uchar *old_rec, const uchar *new_rec);
   int check_duplicate_long_entry_key(const uchar *new_rec, uint key_no);
   /** PRIMARY KEY/UNIQUE WITHOUT OVERLAPS check */
   int ha_check_overlaps(const uchar *old_data, const uchar* new_data);

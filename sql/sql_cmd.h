@@ -20,6 +20,9 @@
 #ifndef SQL_CMD_INCLUDED
 #define SQL_CMD_INCLUDED
 
+//#include "my_base.h"
+//#include "table.h"
+
 /*
   When a command is added here, be sure it's also added in mysqld.cc
   in "struct show_var_st status_vars[]= {" ...
@@ -328,6 +331,13 @@ public:
   virtual bool is_dml() const { return true; }
 
   select_result *get_result() { return result; }
+
+//  ha_rows limit;
+//  ha_rows updated;
+//  THD *thd;
+//  TABLE *table;
+//  List<Item> *fields;
+
 
 protected:
   Sql_cmd_dml()

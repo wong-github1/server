@@ -168,6 +168,10 @@ int close_thread_tables(THD *thd);
 int close_thread_tables_for_query(THD *thd);
 void switch_to_nullable_trigger_fields(List<Item> &items, TABLE *);
 void switch_defaults_to_nullable_trigger_fields(TABLE *table);
+int invoke_before_triggers(THD *thd, TABLE *table,
+                           List<Item> *fields,
+                           List<Item> *values, bool ignore_errors,
+                           enum trg_event_type event);
 bool fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
                                           List<Item> &fields,
                                           List<Item> &values,
