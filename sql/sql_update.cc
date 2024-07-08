@@ -337,192 +337,218 @@ int cut_fields_for_portion_of_time(THD *thd, TABLE *table,
   return res;
 }
 
-static constexpr int MAX_UPDATE_FUNCS= 20;
-static thread_local handler::Update_func update_execution_plan[MAX_UPDATE_FUNCS];
-static thread_local handler::Update_execution_markup update_execution_markup {};
-static thread_local ha_rows limit, updated, rows_inserted, found;
-static thread_local bool record_was_same, will_batch, ignore;
-static thread_local List<Item> *values, *fields;
-
-
-int handler::bulk_update_row_optimized(const uchar * old_data,
-                                       const uchar * new_data)
+struct Update_execution_plan: public Exec_plan
 {
-  ha_rows dup_key_found= 0;
-  int error= bulk_update_row(old_data, new_data, &dup_key_found);
-  limit+= dup_key_found;
-  updated-= dup_key_found;
-  return error;
-}
-
-int handler::vers_insert_history(const uchar *, const uchar *)
-{
-  store_record(table, record[2]);
-  table->mark_columns_per_binlog_row_image();
-  int error= vers_insert_history_row(table);
-  if (likely(!error))
-    rows_inserted++;
-  restore_record(table, record[2]);
-  return error;
-}
-
-int handler::period_make_inserts(const uchar *, const uchar *)
-{
-  if (record_was_same)
-    return 0;
-  store_record(table, record[2]);
-  restore_record(table, record[1]);
-  int error= table->insert_portion_of_time(table->in_use,
-                                   table->pos_in_table_list->period_conditions,
-                                   &rows_inserted);
-  restore_record(table, record[2]);
-  return error;
-}
-
-int handler::process_after_update_triggers(const uchar *, const uchar *)
-{
-  return table->triggers->process_triggers(table->in_use, TRG_EVENT_UPDATE,
-                                           TRG_ACTION_AFTER, TRUE);
-}
-
-int handler::dec_limit_for_update(const uchar *, const uchar *)
-{
-  if (--limit)
-    return 0;
-
-  if (!will_batch)
-    return -1; // Simulate end of file
-
-  /*
-    We have reached end-of-file in most common situations where no
-    batching has occurred and if batching was supposed to occur but
-    no updates were made and finally when the batch execution was
-    performed without error and without finding any duplicate keys.
-    If the batched updates were performed with errors we need to
-    check and if no error but duplicate key's found we need to
-    continue since those are not counted for in limit.
-  */
-  int error= 0;
-  ha_rows dup_key_found;
-  error= table->file->exec_bulk_update(&dup_key_found);
-  if (!error && dup_key_found)
+  enum
   {
-    /*
-      Either an error was found and we are ignoring errors or there
-      were duplicate keys found. In both cases we need to correct
-      the counters and continue the loop.
-    */
-    limit= dup_key_found; // limit is 0 when we get here so need to +
-    updated-= dup_key_found;
+    SKIP_LOOP= 2,
+    SKIP_COMPARE_REC= 3,
+  };
+  static_assert(SKIP_LOOP == VIEW_CHECK_SKIP, "Binary compatibility");
+
+  struct Update_execution_markup
+  {
+    uint mark_trx_pos;
+    uint ha_row_done;
+    uint compare_record_skips_to_here;
+    uint all_done;
+  };
+
+  Update_execution_markup labels {};
+  ha_rows limit, updated, rows_inserted, found;
+  bool record_was_same, will_batch, ignore;
+  List<Item> *values, *fields;
+  THD *thd;
+  handler *handler;
+  TABLE_LIST *table_list;
+  TABLE *table;
+
+  int vers_insert_history(const uchar *, const uchar *)
+  {
+    store_record(table, record[2]);
+    table->mark_columns_per_binlog_row_image();
+    int error= vers_insert_history_row(table);
+    if (likely(!error))
+      rows_inserted++;
+    restore_record(table, record[2]);
+    return error;
+  }
+  int inc_rows_inserted(const uchar *, const uchar *)
+  {
+    rows_inserted++;
+    return 0;
   }
 
-  return error;
-}
+  int period_make_inserts(const uchar *, const uchar *)
+  {
+    if (record_was_same)
+      return 0;
+    store_record(table, record[2]);
+    restore_record(table, record[1]);
+    int error= table->insert_portion_of_time(table->in_use,
+                                             table_list->period_conditions,
+                                             &rows_inserted);
+    restore_record(table, record[2]);
+    return error;
+  }
 
-int handler::check_view_conds(const uchar *, const uchar *)
-{
-  int res= table->pos_in_table_list->view_check_option(table->in_use, ignore);
-  if (res != VIEW_CHECK_OK)
-    found--;
-  return res;
-}
+  int process_after_update_triggers(const uchar *, const uchar *)
+  {
+    return table->triggers->process_triggers(table->in_use, TRG_EVENT_UPDATE,
+                                             TRG_ACTION_AFTER, TRUE);
+  }
 
-int handler::cut_fields_for_portion_of_time(const uchar *, const uchar *)
-{
-  return ::cut_fields_for_portion_of_time(table->in_use, table,
-                                   table->pos_in_table_list->period_conditions);
-}
+  int bulk_update_row(const uchar * old_data, const uchar * new_data)
+  {
+    ha_rows dup_key_found= 0;
+    int error= handler->bulk_update_row(old_data, new_data, &dup_key_found);
+    limit+= dup_key_found;
+    updated-= dup_key_found;
+    return error;
+  }
+
+  int handle_limit(const uchar *, const uchar *)
+  {
+    if (--limit)
+      return 0;
+
+    if (!will_batch)
+      return -1; // Simulate end of file
+
+    /*
+      We have reached end-of-file in most common situations where no
+      batching has occurred and if batching was supposed to occur but
+      no updates were made and finally when the batch execution was
+      performed without error and without finding any duplicate keys.
+      If the batched updates were performed with errors we need to
+      check and if no error but duplicate key's found we need to
+      continue since those are not counted for in limit.
+    */
+    int error= 0;
+    ha_rows dup_key_found;
+    error= table->file->exec_bulk_update(&dup_key_found);
+    if (!error && dup_key_found)
+    {
+      /*
+        Either an error was found and we are ignoring errors or there
+        were duplicate keys found. In both cases we need to correct
+        the counters and continue the loop.
+      */
+      limit= dup_key_found; // limit is 0 when we get here so need to +
+      updated-= dup_key_found;
+    }
+
+    return error;
+  }
+
+  int check_view_conds(const uchar *, const uchar *)
+  {
+    int res= table->pos_in_table_list->view_check_option(table->in_use, ignore);
+    if (res != VIEW_CHECK_OK)
+      found--;
+    return res;
+  }
+
+  int cut_fields_for_portion_of_time(const uchar *, const uchar *)
+  {
+    return ::cut_fields_for_portion_of_time(table->in_use, table,
+                                            table_list->period_conditions);
+  }
 
 
-int handler::invoke_before_triggers(const uchar *, const uchar *)
-{
-  return ::invoke_before_triggers(table->in_use, table, fields, values, false,
-                                  TRG_EVENT_UPDATE);
-}
+  int invoke_before_triggers(const uchar *, const uchar *)
+  {
+    return ::invoke_before_triggers(table->in_use, table, fields, values, false,
+                                    TRG_EVENT_UPDATE);
+  }
 
-enum
-{
-  FUNC_RES_SKIP_LOOP= 2,
-  FUNC_RES_SKIP_COMPARE_REC= 3,
+  int compare_records(const uchar *, const uchar *)
+  {
+    return compare_record(table) ? 0 : SKIP_COMPARE_REC;
+  }
+
+  int vers_update_end(const uchar *, const uchar *)
+  {
+    table->vers_update_end();
+    return 0;
+  }
+
+  int inc_update_stats(const uchar*, const uchar*)
+  { handler->increment_statistics(&SSV::ha_update_count); return 0;}
+  int inc_update_stats_fast(const uchar*, const uchar*)
+  {
+    status_var_increment(thd->status_var.ha_update_count);
+    return 0;
+  }
+
+
+  int mark_trx_read_write_and_inc_update_stats(const uchar*, const uchar*)
+  {
+    handler->mark_trx_read_write_internal();
+    handler->increment_statistics(&SSV::ha_update_count);
+    bool fast= thd->lex->limit_rows_examined_cnt == ULONGLONG_MAX;
+    emplace(this, fast ? &Update_execution_plan::inc_update_stats_fast
+                       : &Update_execution_plan::inc_update_stats,
+            labels.mark_trx_pos);
+    return 0;
+  }
+
+  void build_plan(TABLE_LIST *tl, TABLE_SHARE *table_share,
+                  bool has_vers_fields, bool using_limit)
+  {
+    if (tl->has_period())
+      add(this, &Update_execution_plan::cut_fields_for_portion_of_time);
+
+    Table_triggers_list *triggers= table->triggers;
+    if ((triggers && triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_BEFORE))
+        || tl->table->vfield)
+      add(this, &Update_execution_plan::invoke_before_triggers);
+
+    /*
+      We can use compare_record() to optimize away updates:
+      * if the table handler is returning all columns
+      OR
+      * if all updated columns are read
+    */
+    if (records_are_comparable(tl->table))
+      add(this, &Update_execution_plan::compare_records);
+
+    if (table_share->versioned == VERS_TIMESTAMP
+        && thd->lex->sql_command == SQLCOM_DELETE)
+      add(this, &Update_execution_plan::vers_update_end);
+
+    if (tl->check_option || tl->table->check_constraints)
+      add(this, &Update_execution_plan::check_view_conds);
+
+    // FIXME shouldn't batch_update_row do all the usual stuff ha_update_row
+    //  does? Like, LONG UNIQUE checks, statistics, logging, etc.
+    if (will_batch)
+      add(this, &Update_execution_plan::bulk_update_row);
+    else
+      handler->build_ha_update_execution_plan(this, &labels.mark_trx_pos, this,
+              &Update_execution_plan::mark_trx_read_write_and_inc_update_stats);
+
+    labels.ha_row_done= next;
+
+    if (has_vers_fields && table_share->versioned == VERS_TRX_ID)
+      add(this, &Update_execution_plan::inc_rows_inserted);
+
+    if (tl->has_period())
+      add(this, &Update_execution_plan::period_make_inserts);
+
+    labels.compare_record_skips_to_here= next;
+
+    if (table_share->versioned == VERS_TIMESTAMP && has_vers_fields)
+      add(this, &Update_execution_plan::vers_insert_history);
+
+    if (triggers && triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_AFTER))
+      add(this, &Update_execution_plan::process_after_update_triggers);
+
+    if (using_limit)
+      add(this, &Update_execution_plan::handle_limit);
+  }
 };
-static_assert(FUNC_RES_SKIP_LOOP == VIEW_CHECK_SKIP, "Binary compatibility");
 
-int handler::compare_records(const uchar *, const uchar *)
-{
-  return compare_record(table) ? 0 : FUNC_RES_SKIP_COMPARE_REC;
-}
-
-int handler::vers_update_end(const uchar *, const uchar *)
-{
-  table->vers_update_end();
-  return 0;
-}
-int handler::inc_update_stats(const uchar*, const uchar*)
-{
-  increment_statistics(&SSV::ha_update_count);
-  return 0;
-}
-int handler::mark_trx_read_write_and_inc_update_stats(const uchar*, const uchar*)
-{
-  mark_trx_read_write_internal();
-  increment_statistics(&SSV::ha_update_count);
-  update_execution_plan[update_execution_markup.mark_trx_pos]= &handler::inc_update_stats;
-  return 0;
-}
-
-handler::Update_execution_markup
-build_update_execution_plan(handler::Update_func funcs[MAX_UPDATE_FUNCS],
-                            TABLE_LIST *tl, TABLE_SHARE *table_share,
-                            handler *h,
-                            bool with_bulk, bool has_vers_fields,
-                            bool using_limit)
-{
-  handler::Update_execution_markup array_spec{};
-  int next= 0;
-  if (tl->has_period())
-    funcs[next++]= &handler::cut_fields_for_portion_of_time;
-
-  Table_triggers_list *triggers= tl->table->triggers;
-  if (triggers && triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_BEFORE))
-    funcs[next++]= &handler::invoke_before_triggers;
-
-  /*
-    We can use compare_record() to optimize away updates:
-    if the table handler is returning all columns
-    OR
-    if all updated columns are read
-  */
-  if (records_are_comparable(tl->table))
-    funcs[next++]= &handler::compare_records;
-
-  if (table_share->versioned == VERS_TIMESTAMP
-      && tl->table->in_use->lex->sql_command == SQLCOM_DELETE)
-    funcs[next++]= &handler::vers_update_end;
-
-  if (tl->check_option || tl->table->check_constraints)
-    funcs[next++]= &handler::check_view_conds;
-
-  h->build_ha_update_execution_plan(funcs + next, &array_spec, next, with_bulk);
-
-  next= array_spec.ha_row_done_pos;
-  if (tl->has_period())
-    funcs[next++]= &handler::period_make_inserts;
-
-  array_spec.compare_skips_to_here= next;
-
-  if (table_share->versioned == VERS_TIMESTAMP && has_vers_fields)
-    funcs[next++]= &handler::vers_insert_history;
-
-  if (triggers && triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_AFTER))
-    funcs[next++]= &handler::process_after_update_triggers;
-
-  if (using_limit)
-    funcs[next++]= &handler::dec_limit_for_update;
-
-  funcs[next++]= NULL;
-  DBUG_ASSERT(next <= handler::MAX_UPDATE_FUNCS);
-  return array_spec;
-}
 
 /**
   @brief Special handling of single-table updates after prepare phase
@@ -538,18 +564,13 @@ bool Sql_cmd_update::update_single_table(THD *thd)
   SELECT_LEX_UNIT *unit = &lex->unit;
   SELECT_LEX *select_lex= unit->first_select();
   TABLE_LIST *const table_list = select_lex->get_table_list();
-  fields= &select_lex->item_list;
-  values= &lex->value_list;
   COND *conds= select_lex->where_cond_after_prepare;
   ORDER *order= select_lex->order_list.first;
-  limit= unit->lim.get_select_limit();
   bool ignore= lex->ignore;
 
-  bool		using_limit= limit != HA_POS_ERROR;
   bool          safe_update= (thd->variables.option_bits & OPTION_SAFE_UPDATES)
                              && !thd->lex->describe;
   bool          used_key_is_modified= FALSE, transactional_table;
-  will_batch= FALSE;
   int		error, loc_error;
   ha_rows       dup_key_found;
   bool          need_sort= TRUE;
@@ -569,8 +590,16 @@ bool Sql_cmd_update::update_single_table(THD *thd)
   query_plan.index= MAX_KEY;
   query_plan.using_filesort= FALSE;
 
+  Update_execution_plan exec_plan;
+  exec_plan.table_list= select_lex->get_table_list();
+  exec_plan.fields= &select_lex->item_list;
+  exec_plan.values= &lex->value_list;
+  exec_plan.limit= unit->lim.get_select_limit();
+  exec_plan.will_batch= FALSE;
+  exec_plan.thd= thd;
   // For System Versioning (may need to insert new fields to a table).
-  rows_inserted= 0;
+  exec_plan.rows_inserted= 0;
+  bool		using_limit= exec_plan.limit != HA_POS_ERROR;
 
   DBUG_ENTER("Sql_cmd_update::update_single_table");
 
@@ -586,15 +615,15 @@ bool Sql_cmd_update::update_single_table(THD *thd)
   if (setup_ftfuncs(select_lex))
     DBUG_RETURN(1);
 
-  table= table_list->table;
-  handler *handler= table->file;
+  table= exec_plan.table= table_list->table;
+  exec_plan.handler= exec_plan.table->file;
 
   if (!table_list->single_table_updatable())
   {
     my_error(ER_NON_UPDATABLE_TABLE, MYF(0), table_list->alias.str, "UPDATE");
     DBUG_RETURN(1);
   }
-  
+
   table->opt_range_keys.clear_all();
 
   query_plan.select_lex= thd->lex->first_select_lex();
@@ -603,13 +632,13 @@ bool Sql_cmd_update::update_single_table(THD *thd)
 
   old_covering_keys= table->covering_keys;		// Keys used in WHERE
 
-  bool has_vers_fields= table->vers_check_update(*fields);
+  bool has_vers_fields= table->vers_check_update(*exec_plan.fields);
 
   if (table->default_field)
     table->mark_default_fields_for_write(false);
 
-  switch_to_nullable_trigger_fields(*fields, table);
-  switch_to_nullable_trigger_fields(*values, table);
+  switch_to_nullable_trigger_fields(*exec_plan.fields, table);
+  switch_to_nullable_trigger_fields(*exec_plan.values, table);
 
   /* Apply the IN=>EXISTS transformation to all subqueries and optimize them */
   if (select_lex->optimize_unflattened_subqueries(false))
@@ -621,7 +650,7 @@ bool Sql_cmd_update::update_single_table(THD *thd)
     conds= conds->remove_eq_conds(thd, &cond_value, true);
     if (cond_value == Item::COND_FALSE)
     {
-      limit= 0;                                   // Impossible WHERE
+      exec_plan.limit= 0;                                   // Impossible WHERE
       query_plan.set_impossible_where();
       if (thd->lex->describe || thd->lex->analyze_stmt)
         goto produce_explain_and_leave;
@@ -661,8 +690,8 @@ bool Sql_cmd_update::update_single_table(THD *thd)
   set_statistics_for_table(thd, table);
 
   select= make_select(table, 0, 0, conds, (SORT_INFO*) 0, 0, &error);
-  if (error || !limit || thd->is_error() || table->stat_records() == 0 ||
-      (select && select->check_quick(thd, safe_update, limit,
+  if (error || !exec_plan.limit || thd->is_error() || table->stat_records() == 0 ||
+      (select && select->check_quick(thd, safe_update, exec_plan.limit,
                                       Item_func::BITMAP_ALL)))
   {
     query_plan.set_impossible_where();
@@ -729,7 +758,7 @@ bool Sql_cmd_update::update_single_table(THD *thd)
   {
     ha_rows scanned_limit= query_plan.scanned_rows;
     table->no_keyread= 1;
-    query_plan.index= get_index_for_order(order, table, select, limit,
+    query_plan.index= get_index_for_order(order, table, select, exec_plan.limit,
                                           &scanned_limit, &need_sort,
                                           &reverse);
     table->no_keyread= 0;
@@ -861,9 +890,9 @@ bool Sql_cmd_update::update_single_table(THD *thd)
     }
 
     if (use_direct_update &&
-        !table->file->info_push(INFO_KIND_UPDATE_FIELDS, fields) &&
-        !table->file->info_push(INFO_KIND_UPDATE_VALUES, values) &&
-        !table->file->direct_update_rows_init(fields))
+        !table->file->info_push(INFO_KIND_UPDATE_FIELDS, exec_plan.fields) &&
+        !table->file->info_push(INFO_KIND_UPDATE_VALUES, exec_plan.values) &&
+        !table->file->direct_update_rows_init(exec_plan.fields))
     {
       do_direct_update= TRUE;
 
@@ -887,7 +916,7 @@ bool Sql_cmd_update::update_single_table(THD *thd)
 	to update
         NOTE: filesort will call table->prepare_for_position()
       */
-      Filesort fsort(order, limit, true, select);
+      Filesort fsort(order, exec_plan.limit, true, select);
 
       Filesort_tracker *fs_tracker= 
         thd->lex->explain->get_upd_del_plan()->filesort_tracker;
@@ -957,7 +986,7 @@ bool Sql_cmd_update::update_single_table(THD *thd)
       }
 
       THD_STAGE_INFO(thd, stage_searching_rows_for_update);
-      ha_rows tmp_limit= limit;
+      ha_rows tmp_limit= exec_plan.limit;
 
       while (likely(!(error=info.read_record())) && likely(!thd->killed))
       {
@@ -976,7 +1005,7 @@ bool Sql_cmd_update::update_single_table(THD *thd)
 	    error=1; /* purecov: inspected */
 	    break; /* purecov: inspected */
 	  }
-	  if (!--limit && using_limit)
+	  if (!--exec_plan.limit && using_limit)
 	  {
 	    error= -1;
 	    break;
@@ -1001,7 +1030,7 @@ bool Sql_cmd_update::update_single_table(THD *thd)
       }
       if (unlikely(thd->killed) && !error)
 	error= 1;				// Aborted
-      limit= tmp_limit;
+      exec_plan.limit= tmp_limit;
       table->file->try_semi_consistent_read(0);
       end_read_record(&info);
      
@@ -1042,7 +1071,7 @@ update_begin:
   if (init_read_record(&info, thd, table, select, file_sort, 0, 1, FALSE))
     goto err;
 
-  updated= updated_or_same= found= 0;
+  exec_plan.updated= updated_or_same= exec_plan.found= 0;
   /*
     Generate an error (in TRADITIONAL mode) or warning
     when trying to set a NOT NULL field to NULL.
@@ -1061,17 +1090,17 @@ update_begin:
     if (unlikely(!(error= table->file->ha_direct_update_rows(&update_rows,
                                                              &found_rows))))
       error= -1;
-    updated= update_rows;
-    found= found_rows;
-    if (found < updated)
-      found= updated;
+    exec_plan.updated= update_rows;
+    exec_plan.found= found_rows;
+    if (exec_plan.found < exec_plan.updated)
+      exec_plan.found= exec_plan.updated;
     goto update_end;
   }
 
   if ((table->file->ha_table_flags() & HA_CAN_FORCE_BULK_UPDATE) &&
       !table->prepare_triggers_for_update_stmt_or_event() &&
       !thd->lex->with_rownum)
-    will_batch= !table->file->start_bulk_update();
+    exec_plan.will_batch= !table->file->start_bulk_update();
 
   /*
     Assure that we can use position()
@@ -1087,9 +1116,7 @@ update_begin:
   table->file->prepare_for_insert(1);
   DBUG_ASSERT(table->file->inited != handler::NONE);
 
-  update_execution_markup= build_update_execution_plan(
-          update_execution_plan, table_list, table->s, table->file,
-          will_batch, has_vers_fields, using_limit);
+  exec_plan.build_plan(table_list, table->s, has_vers_fields, using_limit);
 
   THD_STAGE_INFO(thd, stage_updating);
   fix_rownum_pointers(thd, thd->lex->current_select, &updated_or_same);
@@ -1107,48 +1134,52 @@ update_begin:
       explain->tracker.on_record_after_where();
       store_record(table,record[1]);
 
-      if (fill_record(thd, table, *fields, *values, false, true))
+      if (fill_record(thd, table, *exec_plan.fields, *exec_plan.values, false, true))
         break;
 
-      found++;
-      record_was_same= false;
+      exec_plan.found++;
+      exec_plan.record_was_same= false;
 
       uint f= 0;
       do
       {
-        error= (handler->*update_execution_plan[f])(table->record[1],
-                                                    table->record[0]);
+        error= exec_plan.call_list[f].call(table->record[1], table->record[0]);
         if (unlikely(error))
         {
-          if (error == FUNC_RES_SKIP_LOOP)
+          if (error == Update_execution_plan::SKIP_LOOP)
             break;
-          if (error == FUNC_RES_SKIP_COMPARE_REC)
+          if (error == Update_execution_plan::SKIP_COMPARE_REC)
           {
-            f= update_execution_markup.compare_skips_to_here - 1;
+            f= exec_plan.labels.compare_record_skips_to_here - 1;
             continue;
           }
-          record_was_same= error == HA_ERR_RECORD_IS_THE_SAME;
-          if (record_was_same)
+          exec_plan.record_was_same= error == HA_ERR_RECORD_IS_THE_SAME;
+          if (exec_plan.record_was_same)
           {
             updated_or_same++;
             /* Skip to the end of ha_update_row. */
-            if (f < update_execution_markup.ha_row_done_pos)
-              f= update_execution_markup.ha_row_done_pos - 1;
+            if (f < exec_plan.labels.ha_row_done)
+              f= exec_plan.labels.ha_row_done;
             continue;
           }
           break;
         }
         f++;
+        DBUG_ASSERT(f <= Update_execution_plan::MAX_UPDATE_FUNCS);
       }
-      while (update_execution_plan[f]);
+      while (exec_plan.call_list[f].has_value());
 
-      if (likely(!error) || f >= update_execution_markup.ha_row_done_pos /* If ha_update_row part is succeeded */)
+      /* If ha_update_row part is succeeded */
+      if (likely(f >= exec_plan.labels.ha_row_done))
+        updated_or_same++;
+
+      if (likely(!error))
       {
-        if (has_vers_fields && table->versioned(VERS_TRX_ID))
-          rows_inserted++;
-        updated++;
+        exec_plan.updated++;
         updated_or_same++;
       }
+      else if (error == HA_ERR_RECORD_IS_THE_SAME)
+        error= 0;
 
       if (unlikely(error) &&
           (!ignore || table->file->is_fatal_error(error, HA_CHECK_ALL)
@@ -1162,7 +1193,7 @@ update_begin:
         if (error == -1) // end of file
           break;
 
-        if (error == FUNC_RES_SKIP_LOOP) // VIEW_CHECK_SKIP
+        if (error == Update_execution_plan::SKIP_LOOP) // VIEW_CHECK_SKIP
           continue;
 
         if (error >= HA_ERR_FIRST)
@@ -1219,7 +1250,7 @@ update_begin:
   error= (killed_status == NOT_KILLED)?  error : 1;
   
   if (likely(error) &&
-      will_batch &&
+      exec_plan.will_batch &&
       (loc_error= table->file->exec_bulk_update(&dup_key_found)))
     /*
       An error has occurred when a batched update was performed and returned
@@ -1237,14 +1268,14 @@ update_begin:
     /* purecov: end */
   }
   else
-    updated-= dup_key_found;
-  if (will_batch)
+    exec_plan.updated-= dup_key_found;
+  if (exec_plan.will_batch)
     table->file->end_bulk_update();
 
 update_end:
   table->file->try_semi_consistent_read(0);
 
-  if (!transactional_table && updated > 0)
+  if (!transactional_table && exec_plan.updated > 0)
     thd->transaction->stmt.modified_non_trans_table= TRUE;
 
   end_read_record(&info);
@@ -1259,7 +1290,7 @@ update_end:
     Invalidate the table in the query cache if something changed.
     This must be before binlog writing and ha_autocommit_...
   */
-  if (updated)
+  if (exec_plan.updated)
   {
     query_cache_invalidate3(thd, table_list, 1);
   }
@@ -1299,7 +1330,8 @@ update_end:
       }
     }
   }
-  DBUG_ASSERT(transactional_table || !updated || thd->transaction->stmt.modified_non_trans_table);
+  DBUG_ASSERT(transactional_table || !exec_plan.updated
+              || thd->transaction->stmt.modified_non_trans_table);
   free_underlaid_joins(thd, select_lex);
   delete file_sort;
   if (table->file->pushed_cond)
@@ -1316,17 +1348,20 @@ update_end:
   {
     char buff[MYSQL_ERRMSG_SIZE];
     if (!table->versioned(VERS_TIMESTAMP) && !table_list->has_period())
-      my_snprintf(buff, sizeof(buff), ER_THD(thd, ER_UPDATE_INFO), (ulong) found,
-                  (ulong) updated,
+      my_snprintf(buff, sizeof(buff), ER_THD(thd, ER_UPDATE_INFO),
+                  (ulong) exec_plan.found,
+                  (ulong) exec_plan.updated,
                   (ulong) thd->get_stmt_da()->current_statement_warn_count());
     else
       my_snprintf(buff, sizeof(buff),
                   ER_THD(thd, ER_UPDATE_INFO_WITH_SYSTEM_VERSIONING),
-                  (ulong) found, (ulong) updated, (ulong) rows_inserted,
+                  (ulong) exec_plan.found, (ulong) exec_plan.updated,
+                  (ulong) exec_plan.rows_inserted,
                   (ulong) thd->get_stmt_da()->current_statement_warn_count());
-    my_ok(thd, (thd->client_capabilities & CLIENT_FOUND_ROWS) ? found : updated,
+    my_ok(thd, (thd->client_capabilities & CLIENT_FOUND_ROWS)
+                ? exec_plan.found : exec_plan.updated,
           id, buff);
-    DBUG_PRINT("info",("%ld records updated", (long) updated));
+    DBUG_PRINT("info",("%ld records updated", (long) exec_plan.updated));
   }
   thd->count_cuted_fields= CHECK_FIELD_IGNORE;		/* calc cuted fields */
   thd->abort_on_warning= 0;
@@ -1335,8 +1370,8 @@ update_end:
     thd->lex->current_select->save_leaf_tables(thd);
     thd->lex->current_select->first_cond_optimization= 0;
   }
-  ((multi_update *)result)->set_found(found);
-  ((multi_update *)result)->set_updated(updated);
+  ((multi_update *)result)->set_found(exec_plan.found);
+  ((multi_update *)result)->set_updated(exec_plan.updated);
 
   if (unlikely(thd->lex->analyze_stmt))
     goto emit_explain_and_leave;

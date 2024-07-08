@@ -48,6 +48,7 @@
 #include "rowid_filter.h"
 #include "mysys_err.h"
 #include "optimizer_defaults.h"
+#include "exec_plan.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -7986,36 +7987,40 @@ int handler::ha_write_row(const uchar *buf)
   DBUG_RETURN(error);
 }
 
-void handler::build_ha_update_execution_plan(Update_func funcs[MAX_UPDATE_FUNCS],
-                                             Update_execution_markup *array_spec,
-                                             uint offset,
-                                             bool with_bulk)
+void handler::build_ha_update_execution_plan(
+                         Exec_plan *plan,
+                         uint *mark_trx_pos,
+                         Update_execution_plan *obj,
+                         Exec_plan::Update_ptr_to_member mark_trx_and_inc_stats)
 {
-  uint next= 0;
   if (table_share->period.unique_keys)
-    funcs[next++]= &handler::ha_check_overlaps;
+    plan->add(this, &handler::ha_check_overlaps);
   if (table_share->long_unique_table)
-    funcs[next++]= &handler::check_duplicate_long_entries_update;
+    plan->add(this, &handler::check_duplicate_long_entries_update);
 
-  array_spec->mark_trx_pos= next + offset;
-  funcs[next++]= &handler::mark_trx_read_write_and_inc_update_stats;
+  // mark_trx_read_write + statistics_increment function is passed from outside
+  *mark_trx_pos= plan->add(obj, mark_trx_and_inc_stats);
 
   bool have_traces= tracker != NULL || m_psi != NULL;
 #if defined(HAVE_DTRACE) && !defined(DISABLE_DTRACE)
   have_traces= true;
 #endif
 
-  funcs[next++]= with_bulk ? &handler::bulk_update_row_optimized
-                           : have_traces ? &handler::update_row_traced : get_update_row_func();
+  plan->add(this, have_traces ? &handler::update_row_traced
+                              : &handler::update_row);
 
   bool have_wsrep= IF_WSREP(WSREP_NNULL(ha_thd()), false);
 
   if (row_logging || table_share->online_alter_binlog || have_wsrep)
-    funcs[next++]= &handler::log_row_for_update;
+    plan->add(this, &handler::log_row_for_update);
+}
 
-  array_spec->ha_row_done_pos= next + offset;
-  funcs[next++]= NULL;
-  DBUG_ASSERT(next <= MAX_UPDATE_FUNCS);
+
+int handler::mark_trx_and_inc_update_stats(const uchar*, const uchar*)
+{
+  mark_trx_read_write();
+  increment_statistics(&SSV::ha_update_count);
+  return 0;
 }
 
 
@@ -8043,13 +8048,21 @@ int handler::update_row_traced(const uchar * old_data, const uchar * new_data)
 
 int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
 {
-  Update_func funcs[MAX_UPDATE_FUNCS];
-  Update_execution_markup array_spec {};
-  build_ha_update_execution_plan(funcs, &array_spec, 0, false);
+  if (!exec_plan_initialized)
+  {
+    uint update_trx_pos;
+    build_ha_update_execution_plan(
+            &exec_plan, &update_trx_pos,
+            (Update_execution_plan*)this,
+            (Exec_plan::Update_ptr_to_member)
+                    &handler::mark_trx_and_inc_update_stats);
+    exec_plan_initialized= true;
+  }
 
   int error= 0;
-  for (Update_func *f= funcs; *f && likely(!error); f++)
-    error= (table->file->**f)(table->record[1], table->record[0]);
+  for (Exec_plan::Callable *f= exec_plan.call_list;
+       f->has_value() && likely(!error); f++)
+    error= f->call(old_data, new_data);
   return error;
 }
 

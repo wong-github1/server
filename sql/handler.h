@@ -38,6 +38,7 @@
 #include "vers_string.h"
 #include "ha_handler_stats.h"
 #include "optimizer_costs.h"
+#include "exec_plan.h"
 
 #include "sql_analyze_stmt.h" // for Exec_time_tracker 
 
@@ -2059,6 +2060,8 @@ class partition_info;
 
 struct st_partition_iter;
 
+struct Update_execution_plan;
+
 enum ha_choice { HA_CHOICE_UNDEF, HA_CHOICE_NO, HA_CHOICE_YES, HA_CHOICE_MAX };
 
 enum enum_stats_auto_recalc { HA_STATS_AUTO_RECALC_DEFAULT= 0,
@@ -3531,33 +3534,20 @@ public:
   void ha_release_auto_increment();
 
   static constexpr int MAX_UPDATE_FUNCS= 10;
-  typedef int (handler::*Update_func)(const uchar * old_data, const uchar * new_data);
 
-  struct Update_execution_markup
-  {
-    uint mark_trx_pos;
-    uint ha_row_done_pos;
-    uint compare_skips_to_here;
-    uint all_done;
-  };
-  void build_ha_update_execution_plan(handler::Update_func funcs[10], handler::Update_execution_markup *array_spec,
-                                      uint offset, bool with_bulk);
+  friend struct Update_execution_plan; // needed to access private
+
+  Exec_plan exec_plan;
+  bool exec_plan_initialized= false;
+
+  void build_ha_update_execution_plan(
+          Exec_plan *plan,
+          uint *mark_trx_pos,
+          Update_execution_plan *obj,
+          Exec_plan::Update_ptr_to_member mark_trx_and_inc_stats);
 
   int update_row_traced(const uchar * old_data, const uchar * new_data);
-  int bulk_update_row_optimized(const uchar * old_data, const uchar * new_data);
-
-  int inc_update_stats(const uchar*, const uchar*);
-  int mark_trx_read_write_and_inc_update_stats(const uchar*, const uchar*);
-  int vers_insert_history(const uchar *, const uchar *);
-  int period_make_inserts(const uchar *, const uchar *);
-  int process_after_update_triggers(const uchar *, const uchar *);
-  int dec_limit_for_update(const uchar *, const uchar *);
-  int check_view_conds(const uchar *, const uchar *);
-  int cut_fields_for_portion_of_time(const uchar *, const uchar *);
-  int invoke_before_triggers(const uchar *, const uchar *);
-  int compare_records(const uchar *, const uchar *);
-  int vers_update_end(const uchar *, const uchar *);
-  virtual Update_func get_update_row_func() const { return &handler::update_row; }
+  int mark_trx_and_inc_update_stats(const uchar*, const uchar*);
 
 
 
