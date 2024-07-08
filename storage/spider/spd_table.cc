@@ -4499,6 +4499,33 @@ void spider_create_conn_key_add_one(int* counter, char** target, char* src)
   }
 }
 
+/*
+  The conn keys are strings of the following format:
+
+  0 \<idx1> <value1> \0 \<idx2> <value2> \0 ... \<idxN> <valueN> \0
+
+  Where idx1, idx2, etc. are the index of first, second, etc. options
+  where the value is specified. We have the wrapper as the first
+  option, host as the second, port as the third, socket as the fourth,
+  and so on (see below for the order of all options). So here would be
+  a conn key where only the host and the port are specified and
+  nothing else:
+
+  0\002localhost\000\00303306\000
+
+  And it has length 1 + 1 + 9 + 1 + 1 + 5 + 1 = 19.
+
+  In case of HA, say we have another link with the same options
+  specified except that the port is 3307, then we place an extra NUL
+  before placing the next conn_key:
+
+  0\002localhost\000\00303306\000\0000\002localhost\000\00303307\000
+  ^                                  ^
+  conn_keys[0]                       conn_keys[1]
+
+  Thus the total number of chars (share->conn_keys_charlen) needed is
+  (19 + 1) * 2 = 40
+*/
 int spider_create_conn_keys(
   SPIDER_SHARE *share
 ) {
@@ -4589,7 +4616,7 @@ int spider_create_conn_keys(
       + (share->tgt_dsns[all_link_idx] ? share->tgt_dsns_lengths[all_link_idx] + 2 : 0)
       + (share->tgt_filedsns[all_link_idx] ? share->tgt_filedsns_lengths[all_link_idx] + 2 : 0)
       + (share->tgt_drivers[all_link_idx] ? share->tgt_drivers_lengths[all_link_idx] + 2 : 0);
-    share->conn_keys_charlen += conn_keys_lengths[all_link_idx] + 2;
+    share->conn_keys_charlen += conn_keys_lengths[all_link_idx] + 1;
   }
   if (!(share->conn_keys = (char **)
     spider_bulk_malloc(spider_current_trx, SPD_MID_CREATE_CONN_KEYS_1,
@@ -4657,6 +4684,7 @@ int spider_create_conn_keys(
     spider_create_conn_key_add_one(&counter, &tmp_name, share->tgt_dsns[roop_count]);
     spider_create_conn_key_add_one(&counter, &tmp_name, share->tgt_filedsns[roop_count]);
     spider_create_conn_key_add_one(&counter, &tmp_name, share->tgt_drivers[roop_count]);
+    tmp_name++;
     tmp_name++;
     share->conn_keys_hash_value[roop_count] = my_calc_hash(
       &spider_open_connections, (uchar*) share->conn_keys[roop_count],
