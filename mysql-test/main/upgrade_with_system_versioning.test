@@ -1,0 +1,37 @@
+#
+# This test aims to verify that after upgrading to 11.5 CS from 11.4 ES
+# there is no table corruption seen, only (unnecessary) repair of table.
+#
+#
+# The table from 11.4 looks as below:
+#  num  val
+#   1    a
+#   2    b
+#   3    c
+#   4    d
+#
+
+--source include/mysql_upgrade_preparation.inc
+
+let $datadir=`SELECT @@datadir`;
+
+copy_file std_data/try_new_table.MYI $datadir/test/try_new_table_new.MYI;
+copy_file std_data/try_new_table.MYD $datadir/test/try_new_table_new.MYD;
+copy_file std_data/try_new_table.frm $datadir/test/try_new_table_new.frm;
+
+CHECK TABLE try_new_table_new FOR UPGRADE;
+
+ALTER TABLE `try_new_table_new` FORCE;
+
+--exec $MYSQL_UPGRADE --force 2>&1
+
+CHECK TABLE try_new_table_new FOR UPGRADE;
+
+SELECT * FROM try_new_table_new;
+
+--replace_column 3 row_start_time 4 row_end_time
+SELECT num, val, row_start, row_end FROM try_new_table_new;
+
+DROP TABLE try_new_table_new;
+
+--remove_file $datadir/mariadb_upgrade_info
