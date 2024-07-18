@@ -2088,7 +2088,11 @@ deallocate_or_drop:
 
 prepare:
           PREPARE_SYM ident FROM
-          { Lex->clause_that_disallows_subselect= "PREPARE..FROM"; }
+          {
+            thd->where= THD_WHERE::USE_WHERE_STRING;
+            thd->where_str=
+            Lex->clause_that_disallows_subselect= "PREPARE..FROM";
+          }
           expr
           {
             Lex->clause_that_disallows_subselect= NULL;
@@ -2104,7 +2108,11 @@ execute:
               MYSQL_YYABORT;
           }
         | EXECUTE_SYM IMMEDIATE_SYM
-          { Lex->clause_that_disallows_subselect= "EXECUTE IMMEDIATE"; }
+          {
+            thd->where= THD_WHERE::USE_WHERE_STRING;
+            thd->where_str=
+            Lex->clause_that_disallows_subselect= "EXECUTE IMMEDIATE";
+          }
           expr
           { Lex->clause_that_disallows_subselect= NULL; }
           execute_using
@@ -3099,7 +3107,11 @@ call:
 /* CALL parameters */
 opt_sp_cparam_list:
           /* Empty */
-        | '(' opt_sp_cparams ')'
+        | '('
+        {
+          thd->where= THD_WHERE::USE_WHERE_STRING;
+          thd->where_str= "CALL";
+        } opt_sp_cparams ')'
         ;
 
 opt_sp_cparams:
@@ -3573,9 +3585,14 @@ resignal_stmt:
         ;
 
 get_diagnostics:
-          GET_SYM which_area DIAGNOSTICS_SYM diagnostics_information
+          GET_SYM which_area DIAGNOSTICS_SYM
           {
-            Diagnostics_information *info= $4;
+            thd->where= THD_WHERE::USE_WHERE_STRING;
+            thd->where_str= "GET DIAGNOSTICS";
+          }
+          diagnostics_information
+          {
+            Diagnostics_information *info= $5;
 
             info->set_which_da($2);
 
@@ -14753,6 +14770,8 @@ kill:
             lex->users_list.empty();
             lex->sql_command= SQLCOM_KILL;
             lex->kill_type= KILL_TYPE_ID;
+            thd->where= THD_WHERE::USE_WHERE_STRING;
+            thd->where_str= "KILL";
           }
           kill_type kill_option
           {
