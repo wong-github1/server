@@ -44,6 +44,7 @@ show fields from mysql.slow_log;
 #
 # Check flush command
 #
+--disable_cursor_protocol
 --disable_ps2_protocol
 
 flush slow logs;
@@ -121,6 +122,7 @@ show session status like 'Slow_queries';
 
 drop table t;
 --enable_ps2_protocol
+--enable_cursor_protocol
 
 --echo #
 --echo # End of 10.3 tests
@@ -144,6 +146,7 @@ CREATE TABLE `tab_MDEV_30820` (
   PRIMARY KEY (`id`)
 );
 
+--disable_cursor_protocol
 --disable_ps2_protocol
 --disable_view_protocol
 
@@ -188,7 +191,7 @@ drop function get_zero;
 
 --enable_view_protocol
 --enable_ps2_protocol
---enable_view_protocol
+--enable_cursor_protocol
 
 --echo # End of 10.4 tests
 
