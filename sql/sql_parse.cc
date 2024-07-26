@@ -4721,13 +4721,17 @@ mysql_execute_command(THD *thd, bool is_called_from_prepared_stmt)
         if (!is_innodb && !wsrep_toi)
         {
           const legacy_db_type db_type= first_table->table->file->partition_ht()->db_type;
+          const bool replicate=
+            ((db_type == DB_TYPE_MYISAM && wsrep_check_mode(WSREP_MODE_REPLICATE_MYISAM)) ||
+             (db_type == DB_TYPE_ARIA && wsrep_check_mode(WSREP_MODE_REPLICATE_ARIA)));
 
-          /* Currently we support TOI for MyISAM only. */
-          if (db_type == DB_TYPE_MYISAM && wsrep_replicate_myisam)
+          /* Currently we support TOI for MyISAM and Aria only. */
+          if (replicate)
             WSREP_TO_ISOLATION_BEGIN(first_table->db.str, first_table->table_name.str, NULL);
         }
       }
 #endif /* WITH_WSREP */
+
       /*
         Only the INSERT table should be merged. Other will be handled by
         select.
