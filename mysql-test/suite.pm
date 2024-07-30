@@ -78,8 +78,10 @@ sub skip_combinations {
     unless $ssl_lib =~ /WolfSSL/ or $openssl_ver ge "1.0.2";
 
   $skip{'main/ssl_verify_ip.test'} = 'x509v3 support required'
-    unless $openssl_ver ge "1.0.2";
+    unless IS_WINDOWS or $openssl_ver ge "1.0.2";
 
+  $skip{'main/tlsv1_3.test'} = 'OpenSSL too old'
+    unless IS_WINDOWS or $openssl_ver ge "1.1.1";
 
   %skip;
 }

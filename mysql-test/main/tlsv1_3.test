@@ -1,0 +1,2 @@
+-- source include/have_ssl_communication.inc
+--exec $MYSQL --host=localhost --ssl -e "show status like 'ssl_version';"
