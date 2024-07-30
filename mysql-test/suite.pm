@@ -80,8 +80,19 @@ sub skip_combinations {
   $skip{'main/ssl_verify_ip.test'} = 'x509v3 support required'
     unless IS_WINDOWS or $openssl_ver ge "1.0.2";
 
-  $skip{'main/tlsv1_3.test'} = 'OpenSSL too old'
-    unless IS_WINDOWS or $openssl_ver ge "1.1.1";
+  sub is_win11_or_later()
+  {
+    if (IS_WINDOWS) {
+      use if $^O eq 'MSWin32', 'Win32';
+      use version;
+      my ($string, $major, $minor, $build, $id) = Win32::GetOSVersion();
+      return version->parse("$major.$minor.$build") ge version->parse("10.0.22000");
+    } else {
+      return 0;
+    }
+  }
+  $skip{'main/tlsv1_3.test'} = 'OpenSSL or OS too old'
+    unless is_win11_or_later() or $openssl_ver ge "1.1.1";
 
   %skip;
 }
