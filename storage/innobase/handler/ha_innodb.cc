@@ -19427,7 +19427,7 @@ static MYSQL_SYSVAR_UINT(log_buffer_size, log_sys.buf_size,
 static MYSQL_SYSVAR_BOOL(log_file_mmap, log_sys.log_mmap,
   PLUGIN_VAR_OPCMDARG,
   "Whether ib_logfile0 should be memory-mapped",
-  nullptr, innodb_log_file_mmap_update, FALSE);
+  nullptr, innodb_log_file_mmap_update, TRUE);
 #endif
 
 #if defined __linux__ || defined _WIN32
