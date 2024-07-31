@@ -5958,6 +5958,7 @@ TABLE_LIST::TABLE_LIST(THD *thd,
                        List<Index_hint> *index_hints_ptr,
                        LEX_STRING *option_ptr)
 {
+  reset();
   db= db_str;
   is_fqtn= fqtn;
   alias= alias_str;

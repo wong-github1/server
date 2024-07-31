@@ -2212,8 +2212,9 @@ bool Item_name_const::fix_fields(THD *thd, Item **ref)
   */
   if ((thd->where == THD_WHERE::WHERE_CLAUSE ||
        thd->where == THD_WHERE::ON_CLAUSE) &&
-      (value_item->type() == FUNC_ITEM ||
-       value_item->type() == CONST_ITEM))
+      (value_item->type() == CONST_ITEM ||
+       value_item->type() == FUNC_ITEM) &&
+      !thd->lex->is_ps_or_view_context_analysis())
   {
     thd->change_item_tree(ref, value_item);
 
@@ -3902,7 +3903,7 @@ void Item_decimal::set_decimal_value(my_decimal *value_par)
 }
 
 
-Item *Item_decimal::do_clone_const_item(THD *thd) const
+Item *Item_decimal::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_decimal(thd, name.str, &decimal_value, decimals,
                                          max_length);
@@ -3923,7 +3924,7 @@ my_decimal *Item_float::val_decimal(my_decimal *decimal_value)
 }
 
 
-Item *Item_float::do_clone_const_item(THD *thd) const
+Item *Item_float::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_float(thd, name.str, value, decimals,
                                        max_length);
@@ -4087,7 +4088,7 @@ Item *Item_null::safe_charset_converter(THD *thd, CHARSET_INFO *tocs)
   return this;
 }
 
-Item *Item_null::do_clone_const_item(THD *thd) const
+Item *Item_null::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_null(thd, name.str);
 }
@@ -4947,7 +4948,7 @@ Item *Item_param::value_clone_item(THD *thd) const
 /* see comments in the header file */
 
 Item *
-Item_param::do_clone_const_item(THD *thd) const
+Item_param::clone_item(THD *thd) const
 {
   // There's no "default". See comments in Item_param::save_in_field().
   switch (state) {
@@ -7054,7 +7055,7 @@ int Item_string::save_in_field(Field *field, bool no_conversions)
 }
 
 
-Item *Item_string::do_clone_const_item(THD *thd) const
+Item *Item_string::clone_item(THD *thd) const
 {
   LEX_CSTRING val;
   str_value.get_value(&val);
@@ -7118,7 +7119,7 @@ int Item_int::save_in_field(Field *field, bool no_conversions)
 }
 
 
-Item *Item_int::do_clone_const_item(THD *thd) const
+Item *Item_int::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_int(thd, name.str, value, max_length, unsigned_flag);
 }
@@ -7158,7 +7159,7 @@ int Item_decimal::save_in_field(Field *field, bool no_conversions)
 }
 
 
-Item *Item_int_with_ref::do_clone_const_item(THD *thd) const
+Item *Item_int_with_ref::clone_item(THD *thd) const
 {
   DBUG_ASSERT(ref->const_item());
   /*
@@ -7254,7 +7255,7 @@ Item *Item_uint::neg(THD *thd)
 }
 
 
-Item *Item_uint::do_clone_const_item(THD *thd) const
+Item *Item_uint::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_uint(thd, name.str, value, max_length);
 }
@@ -7492,7 +7493,7 @@ void Item_date_literal::print(String *str, enum_query_type query_type)
 }
 
 
-Item *Item_date_literal::do_clone_const_item(THD *thd) const
+Item *Item_date_literal::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_date_literal(thd, &cached_time);
 }
@@ -7528,7 +7529,7 @@ void Item_timestamp_literal::print(String *str, enum_query_type query_type)
 }
 
 
-Item *Item_datetime_literal::do_clone_const_item(THD *thd) const
+Item *Item_datetime_literal::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_datetime_literal(thd, &cached_time, decimals);
 }
@@ -7553,7 +7554,7 @@ void Item_time_literal::print(String *str, enum_query_type query_type)
 }
 
 
-Item *Item_time_literal::do_clone_const_item(THD *thd) const
+Item *Item_time_literal::clone_item(THD *thd) const
 {
   return new (thd->mem_root) Item_time_literal(thd, &cached_time, decimals);
 }
@@ -10520,7 +10521,7 @@ void Item_cache_temporal::store_packed(longlong val_arg, Item *example_arg)
 }
 
 
-Item *Item_cache_temporal::do_clone_const_item(THD *thd) const
+Item *Item_cache_temporal::clone_item(THD *thd) const
 {
   Item_cache *tmp= type_handler()->Item_get_cache(thd, this);
   Item_cache_temporal *item= static_cast<Item_cache_temporal*>(tmp);
