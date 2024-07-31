@@ -1260,20 +1260,24 @@ static void trx_flush_log_if_needed(lsn_t lsn, trx_t *trx)
   const bool flush=
     (srv_file_flush_method != SRV_NOSYNC &&
      (srv_flush_log_at_trx_commit & 1));
-#if defined HAVE_INNODB_MMAP && defined __linux__
-  if (!log_sys.is_mmap());
+#if defined HAVE_INNODB_MMAP
+  if (!log_sys.is_mmap())
+    goto callback_flush;
   else if (!flush)
+  {
+# ifdef __linux__
     /* Starting with Linux 2.6.19, msync(MS_ASYNC) is a no-op
     and we do not need to do anything special for non-durable writes. */
     return;
+# endif
+  }
   else
 # ifdef HAVE_PMEM
   if (log_sys.is_opened())
 # endif
-#else
-  if (!log_sys.is_pmem())
-#endif
   {
+  callback_flush:
+#endif
     completion_callback cb;
 
     if ((cb.m_param= thd_increment_pending_ops(trx->mysql_thd)))
@@ -1282,8 +1286,10 @@ static void trx_flush_log_if_needed(lsn_t lsn, trx_t *trx)
       log_write_up_to(lsn, flush, &cb);
       return;
     }
-  }
 
+#if defined HAVE_INNODB_MMAP
+  }
+#endif
   trx->op_info= "flushing log";
   log_write_up_to(lsn, flush);
   trx->op_info= "";
