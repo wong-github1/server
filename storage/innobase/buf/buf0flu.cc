@@ -1766,7 +1766,7 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
   static_assert(CPU_LEVEL1_DCACHE_LINESIZE >= 64, "efficiency");
   static_assert(CPU_LEVEL1_DCACHE_LINESIZE <= 4096, "compatibility");
   byte* c= my_assume_aligned<CPU_LEVEL1_DCACHE_LINESIZE>
-    (is_pmem() ? buf + offset : checkpoint_buf);
+    (is_mmap() ? buf + offset : checkpoint_buf);
   memset_aligned<CPU_LEVEL1_DCACHE_LINESIZE>(c, 0, CPU_LEVEL1_DCACHE_LINESIZE);
   mach_write_to_8(my_assume_aligned<8>(c), next_checkpoint_lsn);
   mach_write_to_8(my_assume_aligned<8>(c + 8), end_lsn);
@@ -1785,6 +1785,7 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
       header_write(resize_buf, resizing, is_encrypted());
       pmem_persist(resize_buf, resize_target);
     }
+
     pmem_persist(c, 64);
   }
   else
@@ -1795,19 +1796,39 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
     latch.wr_unlock();
     log_write_and_flush_prepare();
     resizing= resize_lsn.load(std::memory_order_relaxed);
-    /* FIXME: issue an asynchronous write */
     ut_ad(ut_is_2pow(write_size));
     ut_ad(write_size >= 512);
     ut_ad(write_size <= 4096);
-    log.write(offset, {c, write_size});
-    if (resizing > 1 && resizing <= next_checkpoint_lsn)
+#ifdef HAVE_INNODB_MMAP
+    if (is_mmap())
     {
-      resize_log.write(CHECKPOINT_1, {c, write_size});
-      byte *buf= static_cast<byte*>(aligned_malloc(4096, 4096));
-      memset_aligned<4096>(buf, 0, 4096);
-      header_write(buf, resizing, is_encrypted());
-      resize_log.write(0, {buf, 4096});
-      aligned_free(buf);
+      IF_WIN(FlushViewOfFile(c, 64), msync(c, my_system_page_size, MS_ASYNC));
+
+      if (resizing > 1 && resizing <= next_checkpoint_lsn)
+      {
+        memcpy_aligned<64>(resize_buf + CHECKPOINT_1, c, 64);
+        header_write(resize_buf, resizing, is_encrypted());
+        IF_WIN(FlushViewOfFile(resize_buf, resize_target),
+               msync(resize_buf, resize_target, MS_ASYNC));
+      }
+    }
+    else
+#endif
+    {
+      ut_ad(ut_is_2pow(write_size));
+      ut_ad(write_size >= 512);
+      ut_ad(write_size <= 4096);
+      log.write(offset, {c, write_size});
+
+      if (resizing > 1 && resizing <= next_checkpoint_lsn)
+      {
+        resize_log.write(CHECKPOINT_1, {c, write_size});
+        byte *buf= static_cast<byte*>(aligned_malloc(4096, 4096));
+        memset_aligned<4096>(buf, 0, 4096);
+        header_write(buf, resizing, is_encrypted());
+        resize_log.write(0, {buf, 4096});
+        aligned_free(buf);
+      }
     }
 
     if (srv_file_flush_method != SRV_O_DSYNC)
@@ -1838,7 +1859,7 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
 
   if (resizing > 1 && resizing <= checkpoint_lsn)
   {
-    ut_ad(is_pmem() == !resize_flush_buf);
+    ut_ad(is_mmap() == !resize_flush_buf);
 
     if (!is_pmem())
     {
@@ -1849,9 +1870,9 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
 
     if (resize_rename())
     {
-      /* Resizing failed. Discard the log_sys.resize_log. */
-#ifdef HAVE_PMEM
-      if (is_pmem())
+      /* Resizing failed. Discard the ib_logfile101. */
+#ifdef HAVE_INNODB_MMAP
+      if (is_mmap())
         my_munmap(resize_buf, resize_target);
       else
 #endif
@@ -1872,23 +1893,35 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
     else
     {
       /* Adopt the resized log. */
-#ifdef HAVE_PMEM
-      if (is_pmem())
+#ifdef HAVE_INNODB_MMAP
+      if (is_mmap())
       {
         my_munmap(buf, file_size);
         buf= resize_buf;
         set_buf_free(START_OFFSET + (get_lsn() - resizing));
+
+# ifdef HAVE_PMEM
+        if (!log.is_opened())
+        {
+          resize_log.close();
+          goto swap_done;
+        }
+# endif
       }
       else
 #endif
       {
-        IF_WIN(,log.close());
-        std::swap(log, resize_log);
         ut_free_dodump(buf, buf_size);
         ut_free_dodump(flush_buf, buf_size);
         buf= resize_buf;
         flush_buf= resize_flush_buf;
       }
+
+      IF_WIN(,log.close());
+      std::swap(log, resize_log);
+# ifdef HAVE_PMEM
+    swap_done:
+# endif
       srv_log_file_size= resizing_completed= file_size= resize_target;
       first_lsn= resizing;
       set_capacity();
@@ -1899,6 +1932,34 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
     resize_target= 0;
     resize_lsn.store(0, std::memory_order_relaxed);
   }
+
+#ifdef HAVE_INNODB_MMAP
+  if (is_mmap())
+  {
+    const size_t ps{my_system_page_size};
+    ut_ad(buf_free == calc_lsn_offset(get_lsn()));
+    size_t offset{buf_free & ~(ps - 1)};
+    const size_t start_offset{calc_lsn_offset(checkpoint_lsn) & ~(ps - 1)};
+    if (offset == start_offset);
+    else if (offset < start_offset)
+      IF_WIN(VirtualAlloc(buf + offset, start_offset - offset,
+                          MEM_RESET, PAGE_READWRITE),
+             madvise(reinterpret_cast<char*>(buf) + offset,
+                     start_offset - offset, MADV_DONTNEED));
+    else
+    {
+      IF_WIN(VirtualAlloc(buf + START_OFFSET, start_offset - START_OFFSET,
+                          MEM_RESET, PAGE_READWRITE),
+             madvise(reinterpret_cast<char*>(buf) + START_OFFSET,
+                     start_offset - START_OFFSET, MADV_DONTNEED));
+      offset+= ps;
+      if (size_t end_size= file_size - offset)
+        IF_WIN(VirtualAlloc(buf + offset, end_size, MEM_RESET, PAGE_READWRITE),
+               madvise(reinterpret_cast<char*>(buf) + offset, end_size,
+                       MADV_DONTNEED));
+    }
+  }
+#endif
 
   log_resize_release();
 

@@ -1237,7 +1237,7 @@ trx_finalize_for_fts(
 }
 
 extern "C" MYSQL_THD thd_increment_pending_ops(MYSQL_THD);
-extern "C" void  thd_decrement_pending_ops(MYSQL_THD);
+extern "C" void  thd_decrement_pending_ops(void*);
 
 
 #include "../log/log0sync.h"
@@ -1260,20 +1260,33 @@ static void trx_flush_log_if_needed(lsn_t lsn, trx_t *trx)
   const bool flush=
     (srv_file_flush_method != SRV_NOSYNC &&
      (srv_flush_log_at_trx_commit & 1));
-
-  completion_callback cb;
-  if (!log_sys.is_pmem() &&
-      (cb.m_param= thd_increment_pending_ops(trx->mysql_thd)))
-  {
-    cb.m_callback = (void (*)(void *)) thd_decrement_pending_ops;
-    log_write_up_to(lsn, flush, &cb);
-  }
+#if defined HAVE_INNODB_MMAP && defined __linux__
+  if (!log_sys.is_mmap());
+  else if (!flush)
+    /* Starting with Linux 2.6.19, msync(MS_ASYNC) is a no-op
+    and we do not need to do anything special for non-durable writes. */
+    return;
   else
+# ifdef HAVE_PMEM
+  if (log_sys.is_opened())
+# endif
+#else
+  if (!log_sys.is_pmem())
+#endif
   {
-    trx->op_info= "flushing log";
-    log_write_up_to(lsn, flush);
-    trx->op_info= "";
+    completion_callback cb;
+
+    if ((cb.m_param= thd_increment_pending_ops(trx->mysql_thd)))
+    {
+      cb.m_callback= thd_decrement_pending_ops;
+      log_write_up_to(lsn, flush, &cb);
+      return;
+    }
   }
+
+  trx->op_info= "flushing log";
+  log_write_up_to(lsn, flush);
+  trx->op_info= "";
 }
 
 /** Process tables that were modified by the committing transaction. */

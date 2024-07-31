@@ -18503,6 +18503,16 @@ buffer_pool_load_abort(
 	}
 }
 
+#ifdef HAVE_INNODB_MMAP
+static void innodb_log_file_mmap_update(THD *thd, st_mysql_sys_var*,
+                                        void *, const void *save)
+{
+  mysql_mutex_unlock(&LOCK_global_system_variables);
+  log_sys.set_mmap(*static_cast<const my_bool*>(save));
+  mysql_mutex_lock(&LOCK_global_system_variables);
+}
+#endif
+
 #if defined __linux__ || defined _WIN32
 static void innodb_log_file_buffering_update(THD *thd, st_mysql_sys_var*,
                                              void *, const void *save)
@@ -19413,6 +19423,13 @@ static MYSQL_SYSVAR_UINT(log_buffer_size, log_sys.buf_size,
   "Redo log buffer size in bytes.",
   NULL, NULL, 16U << 20, 2U << 20, log_sys.buf_size_max, 4096);
 
+#ifdef HAVE_INNODB_MMAP
+static MYSQL_SYSVAR_BOOL(log_file_mmap, log_sys.log_mmap,
+  PLUGIN_VAR_OPCMDARG,
+  "Whether ib_logfile0 should be memory-mapped",
+  nullptr, innodb_log_file_mmap_update, FALSE);
+#endif
+
 #if defined __linux__ || defined _WIN32
 static MYSQL_SYSVAR_BOOL(log_file_buffering, log_sys.log_buffered,
   PLUGIN_VAR_OPCMDARG,
@@ -19891,6 +19908,9 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(deadlock_report),
   MYSQL_SYSVAR(page_size),
   MYSQL_SYSVAR(log_buffer_size),
+#ifdef HAVE_INNODB_MMAP
+  MYSQL_SYSVAR(log_file_mmap),
+#endif
 #if defined __linux__ || defined _WIN32
   MYSQL_SYSVAR(log_file_buffering),
 #endif
