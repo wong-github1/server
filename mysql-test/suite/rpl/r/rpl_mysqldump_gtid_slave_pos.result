@@ -30,10 +30,13 @@ insert into t1 set a = 4;
 insert into t1 set a = 3;
 insert into t1 set a = 2;
 insert into t1 set a = 1;
-include/save_master_gtid.inc
 connection slave;
 include/start_slave.inc
-include/sync_with_master_gtid.inc
+connection master;
+connection slave;
+select @@global.gtid_slave_pos as "after initial inserts";
+after initial inserts
+0-1-6
 select * from mysql.gtid_slave_pos;
 domain_id	sub_id	server_id	seq_no
 0	2	1	1

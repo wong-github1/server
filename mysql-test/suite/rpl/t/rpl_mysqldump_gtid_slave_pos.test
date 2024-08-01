@@ -44,11 +44,16 @@ while ($i)
   eval insert into t1 set a = $i;
   --dec $i
 }
---source include/save_master_gtid.inc
+###??? --source include/save_master_gtid.inc
 
 --connection slave
 --source include/start_slave.inc
---source include/sync_with_master_gtid.inc
+###??? --source include/sync_with_master_gtid.inc
+
+--connection master
+sync_slave_with_master;
+select @@global.gtid_slave_pos as "after initial inserts";
+
 # Prior tests in a mtr batch could leave the min value of sub_id column with
 # arbtirary value. Therefore before dumping let's
 # adjust mysql.gtid_slave_pos to have sub_id growing deterministically.
