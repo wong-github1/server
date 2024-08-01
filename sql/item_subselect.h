@@ -835,7 +835,8 @@ public:
   enum enum_engine_type {ABSTRACT_ENGINE, SINGLE_SELECT_ENGINE,
                          UNION_ENGINE, UNIQUESUBQUERY_ENGINE,
                          INDEXSUBQUERY_ENGINE, HASH_SJ_ENGINE,
-                         ROWID_MERGE_ENGINE, TABLE_SCAN_ENGINE};
+                         ROWID_MERGE_ENGINE, TABLE_SCAN_ENGINE,
+                         SINGLE_COLUMN_ENGINE};
 
   subselect_engine(Item_subselect *si,
                    select_result_interceptor *res):
@@ -1175,6 +1176,8 @@ public:
     PARTIAL_MATCH,  /* Use some partial matching strategy. */
     PARTIAL_MATCH_MERGE, /* Use partial matching through index merging. */
     PARTIAL_MATCH_SCAN,  /* Use partial matching through table scan. */
+    PARTIAL_MATCH_SINGLE_COLUMN, /* Use simplifeid partial matching when
+                                    there is only one field involved. */
     IMPOSSIBLE      /* Subquery materialization is not applicable. */
   };
 
@@ -1195,7 +1198,8 @@ protected:
   ulonglong rowid_merge_buff_size(bool has_non_null_key,
                                   bool has_covering_null_row,
                                   MY_BITMAP *partial_match_key_parts);
-  void choose_partial_match_strategy(bool has_non_null_key,
+  void choose_partial_match_strategy(uint field_count,
+                                     bool has_non_null_key,
                                      bool has_covering_null_row,
                                      MY_BITMAP *partial_match_key_parts);
   bool make_semi_join_conds();
@@ -1559,6 +1563,25 @@ public:
   enum_engine_type engine_type() override { return TABLE_SCAN_ENGINE; }
 };
 
+
+class subselect_single_column_partial_engine:
+    public subselect_partial_match_engine
+{
+protected:
+  bool partial_match() override;
+public:
+  subselect_single_column_partial_engine(
+                              subselect_uniquesubquery_engine *engine_arg,
+                              TABLE *tmp_table_arg, Item_subselect *item_arg,
+                              select_result_interceptor *result_arg,
+                              List<Item> *equi_join_conds_arg,
+                              bool has_covering_null_row_arg,
+                              bool has_covering_null_columns_arg,
+                              uint count_columns_with_nulls_arg);
+  void cleanup() override {}
+  enum_engine_type engine_type() override { return SINGLE_COLUMN_ENGINE; }
+};
+
 /**
   @brief Subquery materialization tracker
 
@@ -1641,6 +1664,8 @@ private:
         return "index_lookup;array merge for partial match";
       case Strategy::PARTIAL_MATCH_SCAN:
         return "index_lookup;full scan for partial match";
+      case Strategy::PARTIAL_MATCH_SINGLE_COLUMN:
+        return "index_lookup;constant for partial match";
       default:
         return "unsupported";
     }
