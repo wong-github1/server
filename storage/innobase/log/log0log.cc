@@ -249,6 +249,8 @@ ATTRIBUTE_COLD static void log_file_message()
                         : "File system buffers for log disabled",
                         log_sys.write_size);
 }
+#else
+static inline void log_file_message() {}
 #endif
 
 bool log_t::attach(log_file_t file, os_offset_t size)
@@ -285,10 +287,10 @@ bool log_t::attach(log_file_t file, os_offset_t size)
       max_buf_free= 1;
       mtr_t::finisher_update();
 # ifdef HAVE_PMEM
-      if (!is_pmem)
+      if (is_pmem)
+        return true;
 # endif
-        goto func_exit;
-      return true;
+      goto func_exit;
     }
   }
   log_mmap= false;
@@ -332,9 +334,7 @@ bool log_t::attach(log_file_t file, os_offset_t size)
 #ifdef HAVE_INNODB_MMAP
  func_exit:
 #endif
-#if defined __linux__ || defined _WIN32
   log_file_message();
-#endif
   return true;
 }
 
@@ -414,6 +414,11 @@ void log_t::create(lsn_t lsn) noexcept
   }
 }
 
+ATTRIBUTE_COLD static void log_close_failed(dberr_t err)
+{
+  ib::fatal() << "closing ib_logfile0 failed: " << err;
+}
+
 #ifdef HAVE_INNODB_MMAP
 void log_t::close_file(bool really_close)
 #else
@@ -452,7 +457,7 @@ void log_t::close_file()
 #endif
     if (is_opened())
       if (const dberr_t err= log.close())
-        ib::fatal() << "closing ib_logfile0 failed: " << err;
+        log_close_failed(err);
 }
 
 /** Acquire all latches that protect the log. */
@@ -492,8 +497,8 @@ void log_t::set_buffered(bool buffered)
   log_resize_acquire();
   if (!resize_in_progress() && is_opened() && bool(log_buffered) != buffered)
   {
-    os_file_close_func(log.m_file);
-    log.m_file= OS_FILE_CLOSED;
+    if (const dberr_t err= log.close())
+      log_close_failed(err);
     std::string path{get_log_file_path()};
     log_buffered= buffered;
     bool success;

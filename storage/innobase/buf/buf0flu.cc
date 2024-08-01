@@ -1815,9 +1815,6 @@ inline void log_t::write_checkpoint(lsn_t end_lsn) noexcept
     else
 #endif
     {
-      ut_ad(ut_is_2pow(write_size));
-      ut_ad(write_size >= 512);
-      ut_ad(write_size <= 4096);
       log.write(offset, {c, write_size});
 
       if (resizing > 1 && resizing <= next_checkpoint_lsn)
