@@ -2529,6 +2529,13 @@ rpl_group_info::unmark_start_commit()
 
   e= this->parallel_entry;
   mysql_mutex_lock(&e->LOCK_parallel_entry);
+  /*
+    Assert that we have not already wrongly completed this GCO and signalled
+    the next one to start, only to now unmark and make the signal invalid.
+    This is to catch problems like MDEV-34696.
+  */
+  DBUG_ASSERT(!gco->next_gco ||
+              gco->next_gco->wait_count > e->count_committing_event_groups);
   --e->count_committing_event_groups;
   mysql_mutex_unlock(&e->LOCK_parallel_entry);
 }
