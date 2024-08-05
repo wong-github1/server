@@ -2036,8 +2036,12 @@ dict_create_add_foreigns_to_dictionary(
 		foreign = *it;
 		ut_ad(foreign->id != NULL);
 
-		error = dict_create_add_foreign_to_dictionary(
-			table->name.m_name, foreign, trx);
+		if (!foreign->check_fk_constraint_valid()) {
+			error = DB_CANNOT_ADD_CONSTRAINT;
+		} else {
+			error = dict_create_add_foreign_to_dictionary(
+				table->name.m_name, foreign, trx);
+		}
 
 		if (error != DB_SUCCESS) {
 			break;

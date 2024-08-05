@@ -15256,10 +15256,37 @@ get_foreign_key_info(
 		name = thd_make_lex_string(thd, name, ptr,
 					   strlen(ptr), 1);
 		f_key_info.foreign_fields.push_back(name);
+
+		if (dict_index_t *fidx= foreign->foreign_index) {
+			if (!f_key_info.foreign_fields_nullable) {
+				f_key_info.assign_fk_nullable(
+					thd, foreign->n_fields);
+			}
+
+			if (fidx->fields[i].col->is_nullable()) {
+				f_key_info.set_nullable(
+					f_key_info.foreign_fields_nullable,
+					i);
+			}
+		}
 		ptr = foreign->referenced_col_names[i];
 		name = thd_make_lex_string(thd, name, ptr,
 					   strlen(ptr), 1);
 		f_key_info.referenced_fields.push_back(name);
+
+		if (dict_index_t *ref_idx= foreign->referenced_index) {
+			if (!f_key_info.referenced_fields_nullable) {
+				f_key_info.assign_ref_nullable(
+						thd, foreign->n_fields);
+			}
+
+			if (ref_idx->fields[i].col->is_nullable()) {
+				f_key_info.set_nullable(
+					f_key_info.referenced_fields_nullable,
+					i);
+			}
+		}
+
 	} while (++i < foreign->n_fields);
 
 	if (foreign->type & DICT_FOREIGN_ON_DELETE_CASCADE) {

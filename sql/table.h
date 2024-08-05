@@ -1882,6 +1882,62 @@ typedef struct st_foreign_key_info
   LEX_CSTRING *referenced_key_name;
   List<LEX_CSTRING> foreign_fields;
   List<LEX_CSTRING> referenced_fields;
+  unsigned char *foreign_fields_nullable= nullptr;
+  unsigned char *referenced_fields_nullable= nullptr;
+
+  /*
+    Get the number of nullable bytes for number of given fields.
+    One bit for each field to store the field is nullable or not.
+    @param n_fields number of foreign key fields
+    @return number of nullable bytes to store nullable information
+  */
+  int get_n_nullable_bytes(unsigned n_fields)
+  {
+    return ((n_fields + 7) >> 3);
+  }
+
+  /*
+    Assign foreign key nullable field based on number of fields
+  */
+  void assign_fk_nullable(THD *thd, unsigned n_fields)
+  {
+    foreign_fields_nullable=
+	    (unsigned char *)thd_calloc(
+			    thd, get_n_nullable_bytes(n_fields));
+  }
+
+  /*
+    Assign referenced key nullable field based on number of fields
+  */
+  void assign_ref_nullable(THD *thd, unsigned n_fields)
+  {
+    referenced_fields_nullable=
+	    (unsigned char*)thd_calloc(
+			    thd, get_n_nullable_bytes(n_fields));
+  }
+
+  /*
+    Set nullable bit for the field in the given field
+    @param nullable_info    foreign or referenced field nullable information
+    @param field_no         field number
+  */
+  void set_nullable(unsigned char *nullable_info, int field_no)
+  {
+    nullable_info[field_no]= (unsigned char) 1;
+  }
+
+  /*
+    Check whether the given field_no in foreign key field or
+    referenced key field
+    @param nullable_info    foreign or referenced nullable information
+    @param field_no         field number
+    @return true if the field is nullable or false if it is not
+  */
+  bool is_nullable(unsigned char *nullable_info, int field_no)
+  {
+    return (nullable_info[field_no] == (unsigned char) 1);
+  }
+
 } FOREIGN_KEY_INFO;
 
 LEX_CSTRING *fk_option_name(enum_fk_option opt);

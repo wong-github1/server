@@ -1448,6 +1448,17 @@ key constraint. */
 typedef std::set<dict_v_col_t*, std::less<dict_v_col_t*>,
 		ut_allocator<dict_v_col_t*> >		dict_vcol_set;
 
+/** The flags for ON_UPDATE and ON_DELETE can be ORed; the default is that
+a foreign key constraint is enforced, therefore RESTRICT just means no flag */
+/* @{ */
+#define DICT_FOREIGN_ON_DELETE_CASCADE	1U	/*!< ON DELETE CASCADE */
+#define DICT_FOREIGN_ON_DELETE_SET_NULL	2U	/*!< ON UPDATE SET NULL */
+#define DICT_FOREIGN_ON_UPDATE_CASCADE	4U	/*!< ON DELETE CASCADE */
+#define DICT_FOREIGN_ON_UPDATE_SET_NULL	8U	/*!< ON UPDATE SET NULL */
+#define DICT_FOREIGN_ON_DELETE_NO_ACTION 16U	/*!< ON DELETE NO ACTION */
+#define DICT_FOREIGN_ON_UPDATE_NO_ACTION 32U	/*!< ON UPDATE NO ACTION */
+/* @} */
+
 /** Data structure for a foreign key constraint; an example:
 FOREIGN KEY (A, B) REFERENCES TABLE2 (C, D).  Most fields will be
 initialized to 0, NULL or FALSE in dict_mem_foreign_create(). */
@@ -1490,6 +1501,111 @@ struct dict_foreign_t{
 	/** Check whether the fulltext index gets affected by
 	foreign key constraint */
 	bool affects_fulltext() const;
+private:
+	/** Check whether the name exists in given column names
+	@retval offset or UINT_MAX if name not found */
+	unsigned col_exists(const char *name, const char **names) const {
+
+		for (unsigned i= 0; i < n_fields; i++) {
+			if (!strcmp(names[i], name)) {
+				return i;
+			}
+		}
+		return UINT_MAX;
+	}
+
+public:
+	/** Check whether the name exists in the foreign
+	key column names
+	@retval offset in case of success
+	@retval UINT_MAX in case of failure */
+	unsigned col_fk_exists(const char *name) const {
+		return col_exists(name, foreign_col_names);
+	}
+
+	/** Check whether the name exists in the referenced
+	key column names
+	@retval offset in case of success
+	@retval UINT_MAX in case of failure */
+	unsigned col_ref_exists(const char *name) const {
+		return col_exists(name, referenced_col_names);
+	}
+
+	/** Check whether the foreign key constraint depends on
+	the nullability of the column to be modified
+	@param name column to be modified
+	@param null_to_non_null Conversion from null to not null
+	@return true in case of no conflict or false */
+	bool check_fk_null_conflicts(const char *name,
+				     bool null_to_non_null) const {
+
+		if (null_to_non_null) {
+			if (!referenced_index) {
+				return false;
+			}
+
+			unsigned offset = col_fk_exists(name);
+			if (offset == UINT_MAX) {
+				return false;
+			}
+			ut_ad(offset < n_fields);
+			dict_field_t field = referenced_index->fields[offset];
+			return !(field.col->prtype & DATA_NOT_NULL);
+		}
+
+		if (!foreign_index) {
+			return false;
+		}
+
+		unsigned offset = col_ref_exists(name);
+		if (offset == UINT_MAX) {
+			return false;
+		}
+
+		ut_ad(offset < n_fields);
+		dict_field_t field= foreign_index->fields[offset];
+		return field.col->prtype & DATA_NOT_NULL;
+	}
+
+	/** This is called during CREATE TABLE statement
+	to check the foreign key nullability constraint
+	@return true if foreign key constraint is valid
+	or else false */
+	bool check_fk_constraint_valid()
+	{
+		if (type != DICT_FOREIGN_ON_UPDATE_CASCADE) {
+			return true;
+		}
+
+		for (unsigned i= 0; i < n_fields; i++) {
+
+			if (!referenced_index) {
+				return true;
+			}
+
+			dict_col_t *col = foreign_index->fields[i].col;
+
+			if (col->prtype & DATA_NOT_NULL) {
+
+				/* Foreign type is ON DELETE SET NULL
+				or ON UPDATE SET NULL */
+				if (type == DICT_FOREIGN_ON_DELETE_SET_NULL ||
+				    type == DICT_FOREIGN_ON_UPDATE_SET_NULL) {
+					return false;
+				}
+
+				dict_col_t *ref_col= referenced_index->
+							fields[i].col;
+				/* Referenced index respective fields
+				shouldn't be NULL */
+				if (!(ref_col->prtype & DATA_NOT_NULL)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
 };
 
 std::ostream&
@@ -1666,17 +1782,6 @@ struct dict_foreign_set_free {
 
 	const dict_foreign_set&	m_foreign_set;
 };
-
-/** The flags for ON_UPDATE and ON_DELETE can be ORed; the default is that
-a foreign key constraint is enforced, therefore RESTRICT just means no flag */
-/* @{ */
-#define DICT_FOREIGN_ON_DELETE_CASCADE	1U	/*!< ON DELETE CASCADE */
-#define DICT_FOREIGN_ON_DELETE_SET_NULL	2U	/*!< ON UPDATE SET NULL */
-#define DICT_FOREIGN_ON_UPDATE_CASCADE	4U	/*!< ON DELETE CASCADE */
-#define DICT_FOREIGN_ON_UPDATE_SET_NULL	8U	/*!< ON UPDATE SET NULL */
-#define DICT_FOREIGN_ON_DELETE_NO_ACTION 16U	/*!< ON DELETE NO ACTION */
-#define DICT_FOREIGN_ON_UPDATE_NO_ACTION 32U	/*!< ON UPDATE NO ACTION */
-/* @} */
 
 /** Display an identifier.
 @param[in,out]	s	output stream
