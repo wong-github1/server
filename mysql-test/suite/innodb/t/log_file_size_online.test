@@ -27,6 +27,17 @@ let SEARCH_PATTERN = InnoDB: Resized log to 4\\.000MiB;
 
 UPDATE t SET b='' WHERE a<10;
 
+--error 0,ER_UNKNOWN_SYSTEM_VARIABLE
+SET @save=@@GLOBAL.innodb_log_file_buffering;
+--error 0,ER_UNKNOWN_SYSTEM_VARIABLE
+SET GLOBAL innodb_log_file_buffering=OFF;
+--error 0,ER_UNKNOWN_SYSTEM_VARIABLE
+SET GLOBAL innodb_log_file_buffering=ON;
+--error 0,ER_UNKNOWN_SYSTEM_VARIABLE
+SET GLOBAL innodb_log_file_buffering=@save;
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR,ER_UNKNOWN_SYSTEM_VARIABLE
+SET GLOBAL innodb_log_file_mmap=OFF;
+
 SET GLOBAL innodb_log_file_size=5242880;
 SHOW VARIABLES LIKE 'innodb_log_file_size';
 SELECT global_value FROM information_schema.system_variables
