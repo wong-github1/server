@@ -434,10 +434,17 @@ public:
 
   struct view_guard
   {
-    inline view_guard();
+    /** latch type: 0=view with no latch; -1=end_view, 1=view */
+    const int latch;
+    inline view_guard(int latch);
     inline ~view_guard();
+    /** Fetch an undo log page.
+    @param id   page identifier
+    @param mtr  mini-transaction
+    @return reference to buffer page, possibly buffer-fixed in mtr */
+    inline const buf_block_t *get(const page_id_t id, mtr_t *mtr);
 
-    /** @return purge_sys.view */
+    /** @return purge_sys.view or purge_sys.end_view */
     inline const ReadViewBase &view() const;
   };
 
@@ -466,14 +473,24 @@ public:
 /** The global data structure coordinating a purge */
 extern purge_sys_t	purge_sys;
 
-purge_sys_t::view_guard::view_guard()
-{ purge_sys.latch.rd_lock(SRW_LOCK_CALL); }
+purge_sys_t::view_guard::view_guard(int latch) : latch(latch)
+{
+  if (latch > 0)
+    purge_sys.latch.rd_lock(SRW_LOCK_CALL);
+  else if (latch < 0)
+    purge_sys.end_latch.rd_lock();
+}
 
 purge_sys_t::view_guard::~view_guard()
-{ purge_sys.latch.rd_unlock(); }
+{
+  if (latch > 0)
+    purge_sys.latch.rd_unlock();
+  else if (latch < 0)
+    purge_sys.end_latch.rd_unlock();
+}
 
 const ReadViewBase &purge_sys_t::view_guard::view() const
-{ return purge_sys.view; }
+{ return latch < 0 ? purge_sys.end_view : purge_sys.view; }
 
 purge_sys_t::end_view_guard::end_view_guard()
 { purge_sys.end_latch.rd_lock(); }

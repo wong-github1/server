@@ -788,12 +788,11 @@ buf_block_t *purge_sys_t::get_page(page_id_t id)
 
   if (UNIV_LIKELY(undo_page != nullptr))
   {
-    undo_page->fix();
-    mtr.commit();
-    return undo_page;
+    undo_page->page.lock.s_unlock();
+    return undo_page; // batch_cleanup() will unfix()
   }
 
-  mtr.commit();
+  ut_ad(mtr.is_empty());
   pages.erase(id);
   return nullptr;
 }
