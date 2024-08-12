@@ -500,10 +500,14 @@ static int exec_sql(MYSQL *mysql, const std::string& s)
   @param filepath - path to .sql file
   @param tz_utc - true if the script sets the timezone to UTC
   @param create_trigger_Defs  - will be filled with CREATE TRIGGER statements
+  @param secondary_indexes - will be filled with CREATE INDEX statements
+  @param engine - will be filled with the engine name
 
   @return content of the file as a string, excluding CREATE TRIGGER statements
 */
-static std::string parse_sql_script(const char *filepath, bool *tz_utc, std::vector<std::string> *create_trigger_Defs,
+static std::string parse_sql_script(const char *filepath, bool *tz_utc,
+    std::vector<std::string> *create_trigger_Defs,
+    std::vector<std::string> *secondary_indexes,
     std::string *engine)
 {
   /*Read full file to string*/
@@ -535,6 +539,18 @@ static std::string parse_sql_script(const char *filepath, bool *tz_utc, std::vec
     create_trigger_Defs->push_back(sql_text.substr(pos + sizeof(CREATE_TRIGGER_PREFIX)-1,
         end_pos - pos - sizeof(CREATE_TRIGGER_PREFIX) +1));
     sql_text.erase(pos, end_pos - pos + sizeof(CREATE_TRIGGER_SUFFIX) - 1);
+  }
+#define KEY_PREFIX ",\n  KEY "
+#define KEY_SUFFIX "\n"
+  for (;;)
+  {
+    auto pos= sql_text.find(KEY_PREFIX);
+    if (pos == std::string::npos)
+      break;
+    auto end_pos= sql_text.find(KEY_SUFFIX, pos + sizeof(KEY_PREFIX) - 1);
+    secondary_indexes->push_back(
+        sql_text.substr(pos + sizeof(KEY_PREFIX) - 1, end_pos - pos - sizeof(KEY_PREFIX) + 1));
+    sql_text.erase(pos, end_pos - pos + sizeof(KEY_SUFFIX) - 1);
   }
 
   /*
@@ -613,9 +629,10 @@ static int handle_one_table(const table_load_params *params, MYSQL *mysql)
   bool tz_utc= false;
   std::string engine;
   std::vector<std::string> triggers;
+  std::vector<std::string> secondary_indexes;
   if (!params->sql_file.empty())
   {
-    std::string sql_text= parse_sql_script(params->sql_file.c_str(), &tz_utc, &triggers,&engine);
+    std::string sql_text= parse_sql_script(params->sql_file.c_str(), &tz_utc, &triggers,&secondary_indexes,&engine);
     if (execute_sql_batch(mysql, sql_text.c_str(),params->sql_file.c_str()))
       DBUG_RETURN(1);
     if (params->data_file.empty())
@@ -695,6 +712,23 @@ static int handle_one_table(const table_load_params *params, MYSQL *mysql)
       fprintf(stdout, "%s.%s: %s\n", db, tablename, info);
   }
 
+  if (secondary_indexes.size())
+  {
+    std::string alter_table= "ALTER TABLE ";
+    alter_table+= full_tablename;
+    bool need_comma=false;
+    for (const auto &index: secondary_indexes)
+    {
+       if (need_comma)
+        alter_table+= ",";
+      alter_table+= " ADD KEY ";
+      alter_table+= index;
+      need_comma= true;
+    }
+    fprintf(stdout,"Executing ALTER: %s\n", alter_table.c_str());
+    if (exec_sql(mysql, alter_table.c_str()))
+      DBUG_RETURN(1);
+  }
   /* Create triggers after loading data */
   for (const auto &trigger: triggers)
   {
