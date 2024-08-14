@@ -3482,12 +3482,11 @@ static bool xtrabackup_copy_logfile()
   return false;
 }
 
-/**
-Wait until redo log copying thread processes given lsn
-*/
-void backup_wait_for_lsn(lsn_t lsn)
+#ifndef DBUG_OFF
+static void dbug_backup_wait_for_lsn(lsn_t lsn)
 {
   mysql_mutex_lock(&recv_sys.mutex);
+  ut_ad(!metadata_last_lsn);
   for (lsn_t last_lsn{recv_sys.lsn}; last_lsn < lsn; )
   {
     timespec abstime;
@@ -3502,15 +3501,87 @@ void backup_wait_for_lsn(lsn_t lsn)
   }
   mysql_mutex_unlock(&recv_sys.mutex);
 }
+#endif
 
-extern lsn_t server_lsn_after_lock;
+static bool backup_wait_timeout(lsn_t lsn, lsn_t last_lsn)
+{
+  if (last_lsn >= lsn)
+    return true;
+  msg("Was only able to copy log from " LSN_PF " to " LSN_PF
+      ", not " LSN_PF "; try increasing innodb_log_file_size",
+      log_sys.next_checkpoint_lsn, last_lsn, lsn);
+  return false;
+}
+
+/**
+Wait for enough log to be copied after BACKUP STAGE BLOCK_DDL.
+@param lsn  log sequence number target
+@return whether log_copying_thread() copied everything until the target lsn
+*/
+static bool backup_wait_for_ddl_lsn(lsn_t lsn)
+{
+  if (!lsn)
+    return true;
+  mysql_mutex_lock(&recv_sys.mutex);
+  ut_ad(!metadata_last_lsn);
+
+  lsn_t last_lsn{recv_sys.lsn};
+
+  while (log_copying_running && last_lsn < lsn)
+  {
+    timespec abstime;
+    set_timespec(abstime, 5);
+    if (my_cond_timedwait(&scanned_lsn_cond, &recv_sys.mutex.m_mutex,
+                          &abstime) &&
+        last_lsn == recv_sys.lsn)
+      break;
+    last_lsn= recv_sys.lsn;
+  }
+
+  mysql_mutex_unlock(&recv_sys.mutex);
+  return backup_wait_timeout(lsn, last_lsn);
+}
+
+
+/**
+Wait for enough log to be copied.
+@param lsn  log sequence number target
+@return whether log_copying_thread() copied everything until the target lsn
+*/
+static bool backup_wait_for_lsn(lsn_t lsn)
+{
+  if (lsn)
+    msg("Waiting for log copy thread to read lsn " LSN_PF, lsn);
+
+  mysql_mutex_lock(&recv_sys.mutex);
+  ut_ad(!metadata_last_lsn);
+  metadata_last_lsn= lsn ? lsn : 1;
+
+  lsn_t last_lsn{recv_sys.lsn};
+
+  while (log_copying_running)
+  {
+    timespec abstime;
+    set_timespec(abstime, 5);
+    if (my_cond_timedwait(&scanned_lsn_cond, &recv_sys.mutex.m_mutex,
+                          &abstime) &&
+        last_lsn == recv_sys.lsn)
+      break;
+    last_lsn= recv_sys.lsn;
+  }
+
+  metadata_last_lsn= last_lsn= recv_sys.lsn;
+
+  mysql_mutex_unlock(&recv_sys.mutex);
+  return backup_wait_timeout(lsn, last_lsn);
+}
 
 static void log_copying_thread()
 {
   my_thread_init();
   mysql_mutex_lock(&recv_sys.mutex);
   while (!xtrabackup_copy_logfile() &&
-         (!metadata_to_lsn || metadata_to_lsn > recv_sys.lsn))
+         (!metadata_last_lsn || metadata_last_lsn > recv_sys.lsn))
   {
     timespec abstime;
     set_timespec_nsec(abstime, 1000000ULL * xtrabackup_log_copy_interval);
@@ -3534,7 +3605,7 @@ static void io_watching_thread()
   mysql_mutex_lock(&recv_sys.mutex);
   ut_ad(have_io_watching_thread);
 
-  while (log_copying_running && !metadata_to_lsn)
+  while (log_copying_running && !metadata_last_lsn)
   {
     timespec abstime;
     set_timespec(abstime, 1);
@@ -4712,33 +4783,16 @@ static void stop_backup_threads()
 @return	whether the operation succeeded */
 bool Backup_datasinks::backup_low()
 {
-	mysql_mutex_lock(&recv_sys.mutex);
-	ut_ad(!metadata_to_lsn);
-
-	/* read the latest checkpoint lsn */
-	{
-		const lsn_t lsn = recv_sys.lsn;
-		if (recv_sys.find_checkpoint() == DB_SUCCESS
-		    && log_sys.is_latest()) {
-			metadata_to_lsn = log_sys.next_checkpoint_lsn;
-			msg("mariabackup: The latest check point"
-			    " (for incremental): '" LSN_PF "'",
-			    metadata_to_lsn);
-		} else {
-			msg("Error: recv_sys.find_checkpoint() failed.");
-		}
-
-		recv_sys.lsn = lsn;
-		stop_backup_threads();
-	}
-
-	if (metadata_to_lsn && xtrabackup_copy_logfile()) {
-		mysql_mutex_unlock(&recv_sys.mutex);
-		ds_close(dst_log_file);
-		dst_log_file = NULL;
+	if (!backup_wait_for_lsn(get_current_lsn(mysql_connection))) {
 		return false;
 	}
+	mysql_mutex_lock(&recv_sys.mutex);
+	ut_ad(!metadata_to_lsn);
+	ut_ad(metadata_last_lsn);
+	ut_ad(!log_copying_running);
+	metadata_to_lsn = metadata_last_lsn;
 
+	stop_backup_threads();
 	mysql_mutex_unlock(&recv_sys.mutex);
 
 	if (ds_close(dst_log_file) || !metadata_to_lsn) {
@@ -4756,7 +4810,7 @@ bool Backup_datasinks::backup_low()
 
 	for (uint32_t id : failed_ids) {
 		msg("mariabackup: Failed to read undo log "
-		    "tablespace space id %d and there is no undo "
+		    "tablespace space id " UINT32PF " and there is no undo "
 		    "tablespace truncation redo record.",
 		    id);
 	}
@@ -4845,8 +4899,8 @@ private:
 		DBUG_MARIABACKUP_EVENT("before_copy", node->space->name());
                 DBUG_EXECUTE_FOR_KEY("wait_innodb_redo_before_copy",
                         node->space->name(),
-                        backup_wait_for_lsn(
-                                get_current_lsn(mysql_connection)););
+                        dbug_backup_wait_for_lsn(
+				get_current_lsn(mysql_connection)););
 		/* copy the datafile */
 		if(xtrabackup_copy_datafile(m_backup_datasinks.m_data,
 		                            m_backup_datasinks.m_meta,
@@ -5063,9 +5117,9 @@ class BackupStages {
 				return false;
 			}
 
-			msg("Waiting for log copy thread to read lsn %llu",
-				server_lsn_after_lock);
-			backup_wait_for_lsn(server_lsn_after_lock);
+			if (!backup_wait_for_ddl_lsn(server_lsn_after_lock)) {
+				return false;
+			}
 			corrupted_pages.backup_fix_ddl(backup_datasinks.m_data,
 			                               backup_datasinks.m_meta);
 
@@ -5097,6 +5151,10 @@ class BackupStages {
 			msg("BACKUP STAGE BLOCK_COMMIT");
 			if (!opt_no_lock && !lock_for_backup_stage_commit(m_bs_con)) {
 				msg("Error on BACKUP STAGE BLOCK_COMMIT query execution");
+				return false;
+			}
+
+			if (!backup_datasinks.backup_low()) {
 				return false;
 			}
 
@@ -5179,13 +5237,11 @@ class BackupStages {
                                }
 			}
 
-			if (!opt_no_lock) {
-				msg("Executing FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS...");
-				xb_mysql_query(mysql_connection,
-						"FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS", false);
-			}
-
-			return backup_datasinks.backup_low();
+			if (opt_no_lock) return true;
+			msg("Executing FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS...");
+			xb_mysql_query(mysql_connection,
+				      "FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS", false);
+			return true;
 		}
 
 		bool stage_end(Backup_datasinks &backup_datasinks) {
@@ -5269,13 +5325,14 @@ static bool xtrabackup_backup_func()
 	undo_space_trunc = backup_undo_trunc;
 	first_page_init = backup_first_page_op;
 	metadata_to_lsn = 0;
+	metadata_last_lsn = 0;
 
 	/* initialize components */
         if(innodb_init_param()) {
 fail:
 		if (log_copying_running) {
 			mysql_mutex_lock(&recv_sys.mutex);
-			metadata_to_lsn = 1;
+			metadata_last_lsn = 1;
 			stop_backup_threads();
 			mysql_mutex_unlock(&recv_sys.mutex);
 		}
@@ -5460,14 +5517,9 @@ fail:
 
 	xb_data_files_close();
 
-	/* Make sure that the latest checkpoint was included */
-	if (metadata_to_lsn > recv_sys.lsn) {
-		msg("Error: failed to copy enough redo log ("
-		    "LSN=" LSN_PF "; checkpoint LSN=" LSN_PF ").",
-		    recv_sys.lsn, metadata_to_lsn);
-		goto fail;
-	}
-
+	ut_ad(!log_copying_running);
+	ut_ad(metadata_to_lsn <= recv_sys.lsn);
+	ut_ad(metadata_last_lsn == recv_sys.lsn);
 	innodb_shutdown();
 	log_file_op = NULL;
 	undo_space_trunc = NULL;
@@ -6769,7 +6821,9 @@ error:
 	}
 
 	/* Check whether the log is applied enough or not. */
-	if (recv_sys.lsn && recv_sys.lsn < target_lsn) {
+	if (recv_sys.lsn && recv_sys.lsn < target_lsn
+	    && (recv_sys.lsn != log_sys.next_checkpoint_lsn
+		|| recv_sys.lsn + SIZE_OF_FILE_CHECKPOINT != target_lsn)) {
 		msg("mariabackup: error: "
 		    "The log was only applied up to LSN " LSN_PF
 		    ", instead of " LSN_PF, recv_sys.lsn, target_lsn);
