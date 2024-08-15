@@ -4783,15 +4783,42 @@ static void stop_backup_threads()
 @return	whether the operation succeeded */
 bool Backup_datasinks::backup_low()
 {
-	if (!backup_wait_for_lsn(get_current_lsn(mysql_connection))) {
-		return false;
-	}
+	lsn_t target_lsn = get_current_lsn(mysql_connection);
 	mysql_mutex_lock(&recv_sys.mutex);
 	ut_ad(!metadata_to_lsn);
+	ut_ad(!metadata_last_lsn);
+
+	/* read the latest checkpoint lsn */
+	{
+		const lsn_t lsn = recv_sys.lsn;
+		if (recv_sys.find_checkpoint() == DB_SUCCESS
+		    && log_sys.is_latest()) {
+			if (log_sys.next_checkpoint_lsn > target_lsn) {
+				target_lsn = log_sys.next_checkpoint_lsn;
+			}
+			metadata_to_lsn = log_sys.next_checkpoint_lsn;
+			msg("mariabackup: The latest check point"
+			    " (for incremental): '" LSN_PF "'",
+			    metadata_to_lsn);
+		} else {
+			msg("Error: recv_sys.find_checkpoint() failed.");
+			mysql_mutex_unlock(&recv_sys.mutex);
+                        return false;
+		}
+
+		recv_sys.lsn = lsn;
+	}
+
+	ut_ad(metadata_to_lsn);
+	mysql_mutex_unlock(&recv_sys.mutex);
+
+	if (!backup_wait_for_lsn(target_lsn)) {
+		return false;
+	}
+
+	mysql_mutex_lock(&recv_sys.mutex);
 	ut_ad(metadata_last_lsn);
 	ut_ad(!log_copying_running);
-	metadata_to_lsn = metadata_last_lsn;
-
 	stop_backup_threads();
 	mysql_mutex_unlock(&recv_sys.mutex);
 
@@ -6821,9 +6848,7 @@ error:
 	}
 
 	/* Check whether the log is applied enough or not. */
-	if (recv_sys.lsn && recv_sys.lsn < target_lsn
-	    && (recv_sys.lsn != log_sys.next_checkpoint_lsn
-		|| recv_sys.lsn + SIZE_OF_FILE_CHECKPOINT != target_lsn)) {
+	if (recv_sys.lsn && recv_sys.lsn < target_lsn) {
 		msg("mariabackup: error: "
 		    "The log was only applied up to LSN " LSN_PF
 		    ", instead of " LSN_PF, recv_sys.lsn, target_lsn);
