@@ -95,7 +95,7 @@ struct FVector
     __m256i *p1= (__m256i*)v1;
     __m256i *p2= (__m256i*)v2;
     v8f d= {0};
-    for (size_t i= 0; i < len/SIMD_dims; p1++, p2++, i++)
+    for (size_t i= 0; i < (len + SIMD_dims-1)/SIMD_dims; p1++, p2++, i++)
     {
       tmp.i= _mm256_cvtepi32_ps(_mm256_madd_epi16(*p1, *p2));
       d+= tmp.v;
@@ -116,7 +116,7 @@ struct FVector
   float distance_to(const FVector *other, size_t vec_len) const
   {
     return abs2 + other->abs2 - scale * other->scale *
-           dot_product(dims, other->dims, MY_ALIGN(vec_len, SIMD_dims));
+           dot_product(dims, other->dims, vec_len);
   }
 };
 #pragma pack(pop)
