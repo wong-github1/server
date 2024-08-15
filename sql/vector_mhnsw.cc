@@ -73,48 +73,54 @@ class FVectorNode;
 struct FVector
 {
   static constexpr size_t header= sizeof(float)*3;
-  static constexpr size_t SIMD_bytes= 256/8;
-  static constexpr size_t SIMD_dims= SIMD_bytes/sizeof(int16_t);
-  static_assert(subdist_part % SIMD_bytes == 0);
 
   float abs2, scale, subabs2; // XXX don't save abs/subabs, only scale
   int16_t dims[4];
 
-  static constexpr size_t alloc_size(size_t n)
-  { return header + MY_ALIGN(n*2, SIMD_bytes) + SIMD_bytes - 1; }
-
-  static constexpr size_t data_size(size_t n)
+  static size_t data_size(size_t n)
   { return header + n*2; }
 
-  static constexpr size_t data_to_value_size(size_t data_size)
+  static size_t data_to_value_size(size_t data_size)
   { return (data_size - header)*2; }
-
-  static FVector *align_ptr(void *ptr)
-  { return (FVector*)(MY_ALIGN(((intptr)ptr) + header, SIMD_bytes) - header); }
-
-  void fix_tail(size_t vec_len)
-  { bzero(dims + vec_len, (MY_ALIGN(vec_len, SIMD_dims) - vec_len)*2); }
 
   static const FVector *create(const MHNSW_Context *ctx, void *mem, const void *src);
 
 #ifdef INTEL_SIMD_IMPLEMENTATION
+  /************* AVX2 *****************************************************/
+  static constexpr size_t AVX2_bytes= 256/8;
+  static constexpr size_t AVX2_dims= AVX2_bytes/sizeof(int16_t);
+  static_assert(subdist_part % AVX2_bytes == 0);
+
   INTEL_SIMD_IMPLEMENTATION
   static float dot_product(const int16_t *v1, const int16_t *v2, size_t len)
   {
-    typedef float v8f __attribute__((vector_size(SIMD_bytes)));
+    typedef float v8f __attribute__((vector_size(AVX2_bytes)));
     union { v8f v; __m256 i; } tmp;
     __m256i *p1= (__m256i*)v1;
     __m256i *p2= (__m256i*)v2;
     v8f d= {0};
-    for (size_t i= 0; i < (len + SIMD_dims-1)/SIMD_dims; p1++, p2++, i++)
+    for (size_t i= 0; i < (len + AVX2_dims-1)/AVX2_dims; p1++, p2++, i++)
     {
       tmp.i= _mm256_cvtepi32_ps(_mm256_madd_epi16(*p1, *p2));
       d+= tmp.v;
     }
     return d[0] + d[1] + d[2] + d[3] + d[4] + d[5] + d[6] + d[7];
   }
+
+  INTEL_SIMD_IMPLEMENTATION
+  static size_t alloc_size(size_t n)
+  { return header + MY_ALIGN(n*2, AVX2_bytes) + AVX2_bytes - 1; }
+
+  INTEL_SIMD_IMPLEMENTATION
+  static FVector *align_ptr(void *ptr)
+  { return (FVector*)(MY_ALIGN(((intptr)ptr) + header, AVX2_bytes) - header); }
+
+  INTEL_SIMD_IMPLEMENTATION
+  void fix_tail(size_t vec_len)
+  { bzero(dims + vec_len, (MY_ALIGN(vec_len, AVX2_dims) - vec_len)*2); }
 #endif
 
+  /************* no-SIMD default ******************************************/
   DEFAULT_IMPLEMENTATION
   static float dot_product(const int16_t *v1, const int16_t *v2, size_t len)
   {
@@ -123,6 +129,15 @@ struct FVector
       d+= int32_t(v1[i]) * int32_t(v2[i]);
     return static_cast<float>(d);
   }
+
+  DEFAULT_IMPLEMENTATION
+  static size_t alloc_size(size_t n) { return data_size(n); }
+
+  DEFAULT_IMPLEMENTATION
+  static FVector *align_ptr(void *ptr) { return (FVector*)ptr; }
+
+  DEFAULT_IMPLEMENTATION
+  void fix_tail(size_t) {  }
 
   float distance_greater_than(const FVector *other, size_t vec_len, float than) const
   {
