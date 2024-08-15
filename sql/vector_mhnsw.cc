@@ -72,18 +72,36 @@ class FVectorNode;
 #pragma pack(push, 1)
 struct FVector
 {
-  static constexpr size_t header= sizeof(float)*3;
+  static constexpr size_t data_header= sizeof(float);
+  static constexpr size_t alloc_header= data_header + sizeof(float)*2;
 
-  float abs2, scale, subabs2; // XXX don't save abs/subabs, only scale
+  float abs2, subabs2, scale;
   int16_t dims[4];
 
+  uchar *data() const { return (uchar*)(&this->scale); }
+
   static size_t data_size(size_t n)
-  { return header + n*2; }
+  { return data_header + n*2; }
 
   static size_t data_to_value_size(size_t data_size)
-  { return (data_size - header)*2; }
+  { return (data_size - data_header)*2; }
 
   static const FVector *create(const MHNSW_Context *ctx, void *mem, const void *src);
+
+  void postprocess(bool use_subdist, size_t vec_len)
+  {
+    int16_t *d= dims;
+    fix_tail(vec_len);
+    if (use_subdist)
+    {
+      subabs2= scale * scale * dot_product(d, d, subdist_part) / 2;
+      d+= subdist_part;
+      vec_len-= subdist_part;
+    }
+    else
+      subabs2= 0;
+    abs2= subabs2 + scale * scale * dot_product(d, d, vec_len) / 2;
+  }
 
 #ifdef INTEL_SIMD_IMPLEMENTATION
   /************* AVX2 *****************************************************/
@@ -109,15 +127,18 @@ struct FVector
 
   INTEL_SIMD_IMPLEMENTATION
   static size_t alloc_size(size_t n)
-  { return header + MY_ALIGN(n*2, AVX2_bytes) + AVX2_bytes - 1; }
+  { return alloc_header + MY_ALIGN(n*2, AVX2_bytes) + AVX2_bytes - 1; }
 
   INTEL_SIMD_IMPLEMENTATION
   static FVector *align_ptr(void *ptr)
-  { return (FVector*)(MY_ALIGN(((intptr)ptr) + header, AVX2_bytes) - header); }
+  { return (FVector*)(MY_ALIGN(((intptr)ptr) + alloc_header, AVX2_bytes)
+                      - alloc_header); }
 
   INTEL_SIMD_IMPLEMENTATION
   void fix_tail(size_t vec_len)
-  { bzero(dims + vec_len, (MY_ALIGN(vec_len, AVX2_dims) - vec_len)*2); }
+  {
+    bzero(dims + vec_len, (MY_ALIGN(vec_len, AVX2_dims) - vec_len)*2);
+  }
 #endif
 
   /************* no-SIMD default ******************************************/
@@ -621,35 +642,18 @@ int MHNSW_Context::acquire(MHNSW_Context **ctx, TABLE *table, bool for_update)
 /* copy the vector, preprocessed as needed */
 const FVector *FVector::create(const MHNSW_Context *ctx, void *mem, const void *src)
 {
-  FVector *vec= align_ptr(mem);
-  float scale= 0, abs2= 0;
-  size_t i= 0;
   const void *vdata= ctx->use_subdist ? alloca(ctx->byte_len) : src;
   Map<const VectorXf> in((const float*)src, ctx->vec_len);
   Map<VectorXf> v((float*)vdata, ctx->vec_len);
   if (ctx->use_subdist)
-  {
-    v = ctx->randomizer * in;
-    for (; i < subdist_part; i++)
-    {
-      abs2+= v(i)*v(i);
-      if (std::abs(scale) < std::abs(v(i)))
-        scale= v(i);
-    }
-    vec->subabs2= abs2 / 2;
-  }
+    v= ctx->randomizer * in;
 
-  for (; i < ctx->vec_len; i++)
-  {
-    abs2+= v(i)*v(i);
-    if (std::abs(scale) < std::abs(v(i)))
-      scale= v(i);
-  }
-  vec->abs2= abs2 / 2;
+  FVector *vec= align_ptr(mem);
+  float scale= std::max(-v.minCoeff(), v.maxCoeff());
   vec->scale= scale ? scale/32767 : 1;
   for (size_t i= 0; i < ctx->vec_len; i++)
     vec->dims[i] = static_cast<int16_t>(std::round(v(i) / vec->scale));
-  vec->fix_tail(ctx->vec_len);
+  vec->postprocess(ctx->use_subdist, ctx->vec_len);
   return vec;
 }
 
@@ -739,8 +743,8 @@ int FVectorNode::load_from_record(TABLE *graph)
   if (v->length() != FVector::data_size(ctx->vec_len))
     return my_errno= HA_ERR_CRASHED;
   FVector *vec_ptr= FVector::align_ptr(tref() + tref_len());
-  memcpy(vec_ptr, v->ptr(), v->length());
-  vec_ptr->fix_tail(ctx->vec_len);
+  memcpy(vec_ptr->data(), v->ptr(), v->length());
+  vec_ptr->postprocess(ctx->use_subdist, ctx->vec_len);
 
   longlong layer= graph->field[FIELD_LAYER]->val_int();
   if (layer > 100) // 10e30 nodes at M=2, more at larger M's
@@ -908,7 +912,7 @@ int FVectorNode::save(TABLE *graph)
     graph->field[FIELD_TREF]->set_notnull();
     graph->field[FIELD_TREF]->store_binary(tref(), tref_len());
   }
-  graph->field[FIELD_VEC]->store_binary((uchar*)vec, FVector::data_size(ctx->vec_len));
+  graph->field[FIELD_VEC]->store_binary(vec->data(), FVector::data_size(ctx->vec_len));
 
   size_t total_size= 0;
   for (size_t i=0; i <= max_layer; i++)
