@@ -3482,27 +3482,6 @@ static bool xtrabackup_copy_logfile()
   return false;
 }
 
-#ifndef DBUG_OFF
-static void dbug_backup_wait_for_lsn(lsn_t lsn)
-{
-  mysql_mutex_lock(&recv_sys.mutex);
-  ut_ad(!metadata_last_lsn);
-  for (lsn_t last_lsn{recv_sys.lsn}; last_lsn < lsn; )
-  {
-    timespec abstime;
-    set_timespec(abstime, 5);
-    if (my_cond_timedwait(&scanned_lsn_cond, &recv_sys.mutex.m_mutex,
-                          &abstime) &&
-        last_lsn == recv_sys.lsn)
-      die("Was only able to copy log from " LSN_PF " to " LSN_PF
-          ", not " LSN_PF "; try increasing innodb_log_file_size",
-          log_sys.next_checkpoint_lsn, last_lsn, lsn);
-    last_lsn= recv_sys.lsn;
-  }
-  mysql_mutex_unlock(&recv_sys.mutex);
-}
-#endif
-
 static bool backup_wait_timeout(lsn_t lsn, lsn_t last_lsn)
 {
   if (last_lsn >= lsn)
@@ -3518,11 +3497,12 @@ Wait for enough log to be copied after BACKUP STAGE BLOCK_DDL.
 @param lsn  log sequence number target
 @return whether log_copying_thread() copied everything until the target lsn
 */
-static bool backup_wait_for_ddl_lsn(lsn_t lsn)
+static bool backup_wait_for_lsn(lsn_t lsn)
 {
   if (!lsn)
     return true;
   mysql_mutex_lock(&recv_sys.mutex);
+  ut_ad(!metadata_to_lsn);
   ut_ad(!metadata_last_lsn);
 
   lsn_t last_lsn{recv_sys.lsn};
@@ -4723,6 +4703,7 @@ end:
 
 static void stop_backup_threads()
 {
+  ut_ad(metadata_last_lsn);
   mysql_cond_broadcast(&log_copying_stop);
 
   if (log_copying_running || have_io_watching_thread)
@@ -4750,16 +4731,17 @@ static void stop_backup_threads()
 Wait for enough log to be copied.
 @return whether log_copying_thread() copied everything until the target lsn
 */
-static bool backup_wait_for_lsn()
+static bool backup_wait_for_commit_lsn()
 {
   lsn_t lsn= get_current_lsn(mysql_connection);
   mysql_mutex_lock(&recv_sys.mutex);
   ut_ad(!metadata_to_lsn);
   ut_ad(!metadata_last_lsn);
 
+  lsn_t last_lsn= recv_sys.lsn;
+
   /* read the latest checkpoint lsn */
   {
-    const lsn_t copied_lsn= recv_sys.lsn;
     if (recv_sys.find_checkpoint() == DB_SUCCESS && log_sys.is_latest())
     {
       if (log_sys.next_checkpoint_lsn > lsn)
@@ -4776,14 +4758,12 @@ static bool backup_wait_for_lsn()
       return false;
     }
 
-    recv_sys.lsn= copied_lsn;
+    recv_sys.lsn= last_lsn;
   }
 
   ut_ad(metadata_to_lsn);
   msg("Waiting for log copy thread to read lsn " LSN_PF, lsn);
   metadata_last_lsn= lsn;
-
-  lsn_t last_lsn{recv_sys.lsn};
 
   while (log_copying_running)
   {
@@ -4808,6 +4788,7 @@ bool Backup_datasinks::backup_low()
 {
 	ut_d(mysql_mutex_lock(&recv_sys.mutex));
 	ut_ad(metadata_last_lsn);
+	ut_ad(metadata_to_lsn);
 	ut_ad(!log_copying_running);
 	ut_d(mysql_mutex_unlock(&recv_sys.mutex));
 
@@ -4915,7 +4896,7 @@ private:
 		DBUG_MARIABACKUP_EVENT("before_copy", node->space->name());
                 DBUG_EXECUTE_FOR_KEY("wait_innodb_redo_before_copy",
                         node->space->name(),
-                        dbug_backup_wait_for_lsn(
+                        backup_wait_for_lsn(
 				get_current_lsn(mysql_connection)););
 		/* copy the datafile */
 		if(xtrabackup_copy_datafile(m_backup_datasinks.m_data,
@@ -5133,7 +5114,7 @@ class BackupStages {
 				return false;
 			}
 
-			if (!backup_wait_for_ddl_lsn(server_lsn_after_lock)) {
+			if (!backup_wait_for_lsn(server_lsn_after_lock)) {
 				return false;
 			}
 			corrupted_pages.backup_fix_ddl(backup_datasinks.m_data,
@@ -5180,7 +5161,7 @@ class BackupStages {
 			// to mysql.general_log, which could be an
 			// ENGINE=CSV table that we just copied
 			// above.
-			if (!backup_wait_for_lsn()) {
+			if (!backup_wait_for_commit_lsn()) {
 				return false;
 			}
 
