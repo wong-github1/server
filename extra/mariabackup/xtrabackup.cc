@@ -3543,39 +3543,6 @@ static bool backup_wait_for_ddl_lsn(lsn_t lsn)
 }
 
 
-/**
-Wait for enough log to be copied.
-@param lsn  log sequence number target
-@return whether log_copying_thread() copied everything until the target lsn
-*/
-static bool backup_wait_for_lsn(lsn_t lsn)
-{
-  if (lsn)
-    msg("Waiting for log copy thread to read lsn " LSN_PF, lsn);
-
-  mysql_mutex_lock(&recv_sys.mutex);
-  ut_ad(!metadata_last_lsn);
-  metadata_last_lsn= lsn ? lsn : 1;
-
-  lsn_t last_lsn{recv_sys.lsn};
-
-  while (log_copying_running)
-  {
-    timespec abstime;
-    set_timespec(abstime, 5);
-    if (my_cond_timedwait(&scanned_lsn_cond, &recv_sys.mutex.m_mutex,
-                          &abstime) &&
-        last_lsn == recv_sys.lsn)
-      break;
-    last_lsn= recv_sys.lsn;
-  }
-
-  metadata_last_lsn= last_lsn= recv_sys.lsn;
-
-  mysql_mutex_unlock(&recv_sys.mutex);
-  return backup_wait_timeout(lsn, last_lsn);
-}
-
 static void log_copying_thread()
 {
   my_thread_init();
@@ -4779,48 +4746,70 @@ static void stop_backup_threads()
   mysql_cond_destroy(&log_copying_stop);
 }
 
+/**
+Wait for enough log to be copied.
+@return whether log_copying_thread() copied everything until the target lsn
+*/
+static bool backup_wait_for_lsn()
+{
+  lsn_t lsn= get_current_lsn(mysql_connection);
+  mysql_mutex_lock(&recv_sys.mutex);
+  ut_ad(!metadata_to_lsn);
+  ut_ad(!metadata_last_lsn);
+
+  /* read the latest checkpoint lsn */
+  {
+    const lsn_t copied_lsn= recv_sys.lsn;
+    if (recv_sys.find_checkpoint() == DB_SUCCESS && log_sys.is_latest())
+    {
+      if (log_sys.next_checkpoint_lsn > lsn)
+        lsn= log_sys.next_checkpoint_lsn;
+      metadata_to_lsn= log_sys.next_checkpoint_lsn;
+      msg("mariabackup: The latest check point (for incremental): '"
+          LSN_PF "'", metadata_to_lsn);
+    }
+    else
+    {
+      msg("Error: recv_sys.find_checkpoint() failed.");
+      stop_backup_threads();
+      mysql_mutex_unlock(&recv_sys.mutex);
+      return false;
+    }
+
+    recv_sys.lsn= copied_lsn;
+  }
+
+  ut_ad(metadata_to_lsn);
+  msg("Waiting for log copy thread to read lsn " LSN_PF, lsn);
+  metadata_last_lsn= lsn;
+
+  lsn_t last_lsn{recv_sys.lsn};
+
+  while (log_copying_running)
+  {
+    timespec abstime;
+    set_timespec(abstime, 5);
+    if (my_cond_timedwait(&scanned_lsn_cond, &recv_sys.mutex.m_mutex,
+                          &abstime) &&
+        last_lsn == recv_sys.lsn)
+      break;
+    last_lsn= recv_sys.lsn;
+  }
+
+  metadata_last_lsn= last_lsn= recv_sys.lsn;
+  stop_backup_threads();
+  mysql_mutex_unlock(&recv_sys.mutex);
+  return backup_wait_timeout(lsn, last_lsn);
+}
+
 /** Implement the core of --backup
 @return	whether the operation succeeded */
 bool Backup_datasinks::backup_low()
 {
-	lsn_t target_lsn = get_current_lsn(mysql_connection);
-	mysql_mutex_lock(&recv_sys.mutex);
-	ut_ad(!metadata_to_lsn);
-	ut_ad(!metadata_last_lsn);
-
-	/* read the latest checkpoint lsn */
-	{
-		const lsn_t lsn = recv_sys.lsn;
-		if (recv_sys.find_checkpoint() == DB_SUCCESS
-		    && log_sys.is_latest()) {
-			if (log_sys.next_checkpoint_lsn > target_lsn) {
-				target_lsn = log_sys.next_checkpoint_lsn;
-			}
-			metadata_to_lsn = log_sys.next_checkpoint_lsn;
-			msg("mariabackup: The latest check point"
-			    " (for incremental): '" LSN_PF "'",
-			    metadata_to_lsn);
-		} else {
-			msg("Error: recv_sys.find_checkpoint() failed.");
-			mysql_mutex_unlock(&recv_sys.mutex);
-                        return false;
-		}
-
-		recv_sys.lsn = lsn;
-	}
-
-	ut_ad(metadata_to_lsn);
-	mysql_mutex_unlock(&recv_sys.mutex);
-
-	if (!backup_wait_for_lsn(target_lsn)) {
-		return false;
-	}
-
-	mysql_mutex_lock(&recv_sys.mutex);
+	ut_d(mysql_mutex_lock(&recv_sys.mutex));
 	ut_ad(metadata_last_lsn);
 	ut_ad(!log_copying_running);
-	stop_backup_threads();
-	mysql_mutex_unlock(&recv_sys.mutex);
+	ut_d(mysql_mutex_unlock(&recv_sys.mutex));
 
 	if (ds_close(dst_log_file) || !metadata_to_lsn) {
 		dst_log_file = NULL;
@@ -5181,13 +5170,17 @@ class BackupStages {
 				return false;
 			}
 
-			if (!backup_datasinks.backup_low()) {
-				return false;
-			}
-
 			// Copy log tables tail
 			if (!m_common_backup.copy_log_tables(true)) {
 				msg("Error on copy log tables");
+				return false;
+			}
+
+			// SHOW ENGINE INNODB STATUS would be written
+			// to mysql.general_log, which could be an
+			// ENGINE=CSV table that we just copied
+			// above.
+			if (!backup_wait_for_lsn()) {
 				return false;
 			}
 
@@ -5264,11 +5257,13 @@ class BackupStages {
                                }
 			}
 
-			if (opt_no_lock) return true;
-			msg("Executing FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS...");
-			xb_mysql_query(mysql_connection,
-				      "FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS", false);
-			return true;
+			if (!opt_no_lock) {
+				msg("Executing FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS...");
+				xb_mysql_query(mysql_connection,
+						"FLUSH NO_WRITE_TO_BINLOG ENGINE LOGS", false);
+			}
+
+			return backup_datasinks.backup_low();
 		}
 
 		bool stage_end(Backup_datasinks &backup_datasinks) {
