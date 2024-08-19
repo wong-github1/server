@@ -56,7 +56,7 @@ TARGET_LINK_LIBRARIES(mariadb-check ${CLIENT_LIB})
 MYSQL_ADD_EXECUTABLE(mariadb-dump mysqldump.cc ../sql-common/my_user.c connection_pool.cc)
 TARGET_LINK_LIBRARIES(mariadb-dump ${CLIENT_LIB})
 
-MYSQL_ADD_EXECUTABLE(mariadb-import mysqlimport.cc)
+MYSQL_ADD_EXECUTABLE(mariadb-import mysqlimport.cc import_util.cc import_util.h)
 target_include_directories(mariadb-import PRIVATE ${CMAKE_SOURCE_DIR}/tpool)
 target_link_libraries(mariadb-import PRIVATE tpool ${CLIENT_LIB})
 
