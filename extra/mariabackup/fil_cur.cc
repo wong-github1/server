@@ -247,8 +247,6 @@ static bool page_is_corrupted(const byte *page, ulint page_no,
 			      const xb_fil_cur_t *cursor,
 			      const fil_space_t *space)
 {
-	byte tmp_frame[UNIV_PAGE_SIZE_MAX];
-	byte tmp_page[UNIV_PAGE_SIZE_MAX];
 	const ulint page_size = cursor->page_size;
 	uint16_t page_type = fil_page_get_type(page);
 
@@ -290,6 +288,12 @@ static bool page_is_corrupted(const byte *page, ulint page_no,
 		return buf_page_is_corrupted(true, page, space->flags);
 	}
 
+	byte *tmp_frame = static_cast<byte*>(
+		aligned_malloc(srv_page_size, srv_page_size));
+	byte *tmp_page = static_cast<byte*>(
+		aligned_malloc(srv_page_size, srv_page_size));
+	bool is_corrupted = false;
+
 	/* Validate encrypted pages. The first page is never encrypted.
 	In the system tablespace, the first page would be written with
 	FIL_PAGE_FILE_FLUSH_LSN at shutdown, and if the LSN exceeds
@@ -302,26 +306,31 @@ static bool page_is_corrupted(const byte *page, ulint page_no,
 		|| (space->crypt_data
 		    && space->crypt_data->type != CRYPT_SCHEME_UNENCRYPTED))) {
 
-		if (!fil_space_verify_crypt_checksum(page, space->zip_size()))
-			return true;
+		is_corrupted = !fil_space_verify_crypt_checksum(page, space->zip_size());
+
+		if (is_corrupted) {
+			goto func_exit;
+		}
 
 		/* Compressed encrypted need to be decrypted
 		and decompressed for verification. */
 		if (page_type != FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED
 		    && !opt_extended_validation)
-			return false;
+			goto func_exit;
 
 		memcpy(tmp_page, page, page_size);
 
 		if (!space->crypt_data
 		    || space->crypt_data->type == CRYPT_SCHEME_UNENCRYPTED
 		    || !fil_space_decrypt(space, tmp_frame, tmp_page)) {
-			return true;
+			is_corrupted = true;
+			goto func_exit;
 		}
 
 		if (page_type != FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED) {
-			return buf_page_is_corrupted(true, tmp_page,
-						     space->flags);
+			is_corrupted = buf_page_is_corrupted(
+					 true, tmp_page, space->flags);
+			goto func_exit;
 		}
 	}
 
@@ -335,16 +344,25 @@ static bool page_is_corrupted(const byte *page, ulint page_no,
 						   space->flags);
 		page_type = fil_page_get_type(tmp_page);
 
-		return (!decomp
-			|| (decomp != srv_page_size
-			    && cursor->zip_size)
-			|| page_type == FIL_PAGE_PAGE_COMPRESSED
-			|| page_type == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED
-			|| buf_page_is_corrupted(true, tmp_page,
-						 space->flags));
+		is_corrupted =
+			(!decomp
+			 || (decomp != srv_page_size && cursor->zip_size)
+			 || page_type == FIL_PAGE_PAGE_COMPRESSED
+			 || page_type == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED);
+
+		if (!is_corrupted) {
+			is_corrupted = buf_page_is_corrupted(true, tmp_page,
+							     space->flags);
+		}
+
+		goto func_exit;
 	}
 
-	return buf_page_is_corrupted(true, page, space->flags);
+	is_corrupted = buf_page_is_corrupted(true, page, space->flags);
+func_exit:
+	aligned_free(tmp_frame);
+	aligned_free(tmp_page);
+	return is_corrupted;
 }
 
 /** Reads and verifies the next block of pages from the source
