@@ -213,4 +213,6 @@ dict_process_sys_foreign_col_rec(
 					in referenced table */
 	ulint*		pos);		/*!< out: column position */
 
+dberr_t dict_get_sys_tablespace_indexes(
+  std::vector<uint32_t> &sys_root_pages);
 #endif

@@ -380,6 +380,9 @@ extern my_bool	srv_encrypt_log;
 /* is encryption enabled */
 extern ulong	srv_encrypt_tables;
 
+/* Doing extensive check before truncating the system
+tablespace */
+extern my_bool  srv_sys_shrink_extensive;
 
 /** Status variables to be passed to MySQL */
 extern struct export_var_t export_vars;

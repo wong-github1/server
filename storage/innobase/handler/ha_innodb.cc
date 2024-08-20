@@ -19307,6 +19307,12 @@ static MYSQL_SYSVAR_BOOL(optimize_fulltext_only, innodb_optimize_fulltext_only,
   "Only optimize the Fulltext index of the table",
   NULL, NULL, FALSE);
 
+static MYSQL_SYSVAR_BOOL(sys_tablespace_shrink_extensive,
+  srv_sys_shrink_extensive,
+  PLUGIN_VAR_OPCMDARG,
+  "Shrink the system tablespace by doing extensive check",
+  NULL, NULL, TRUE);
+
 extern int os_aio_resize(ulint n_reader_threads, ulint n_writer_threads);
 static void innodb_update_io_thread_count(THD *thd,ulint n_read, ulint n_write)
 {
@@ -19924,6 +19930,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(buf_dump_status_frequency),
   MYSQL_SYSVAR(background_thread),
   MYSQL_SYSVAR(encrypt_temporary_tables),
+  MYSQL_SYSVAR(sys_tablespace_shrink_extensive),
 
   NULL
 };

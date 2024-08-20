@@ -185,6 +185,8 @@ public:
       my_cond_wait(&cond, &mutex.m_mutex);
     mysql_mutex_unlock(&mutex);
   }
+
+  uint32_t block2_page() { return block2.page_no(); }
 };
 
 /** The doublewrite buffer */

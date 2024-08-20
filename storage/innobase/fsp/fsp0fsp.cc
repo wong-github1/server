@@ -40,6 +40,9 @@ Created 11/29/1995 Heikki Tuuri
 #include "dict0mem.h"
 #include "fsp0types.h"
 #include "log.h"
+#include "dict0load.h"
+
+my_bool srv_sys_shrink_extensive;
 
 /** Returns the first extent descriptor for a segment.
 We think of the extent lists of the segment catenated in the order
@@ -1644,21 +1647,36 @@ fseg_find_last_used_frag_page_slot(
 	return(ULINT_UNDEFINED);
 }
 
-/** Calculate reserved fragment page slots.
-@param inode  file segment index
-@return number of fragment pages */
-static ulint fseg_get_n_frag_pages(const fseg_inode_t *inode)
+/** Get the descriptor starting page for the given page
+@param page page to find descriptor
+@return descriptor start page number */
+uint32_t get_extent_start_page(uint32_t page)
 {
-	ulint	i;
-	ulint	count	= 0;
+  return ((page / FSP_EXTENT_SIZE) * FSP_EXTENT_SIZE);
+}
 
-	for (i = 0; i < FSEG_FRAG_ARR_N_SLOTS; i++) {
-		if (FIL_NULL != fseg_get_nth_frag_page_no(inode, i)) {
-			count++;
-		}
-	}
+/** Calculate reserved fragment page slots.
+@param inode               file segment index
+@param assign_max_extent   Assign the maximum used extent
+@return number of fragment pages */
+static ulint fseg_get_n_frag_pages(
+  const fseg_inode_t *inode,
+  uint32_t *max_used_extent= nullptr)
+{
+  ulint	i, count= 0;
+  for (i = 0; i < FSEG_FRAG_ARR_N_SLOTS; i++)
+  {
+    uint32_t page= fseg_get_nth_frag_page_no(inode, i);
+    if (FIL_NULL != page)
+    {
+      if (max_used_extent)
+        *max_used_extent= std::max(*max_used_extent,
+                                   get_extent_start_page(page));
+      count++;
+    }
+  }
 
-	return(count);
+  return count;
 }
 
 /** Create a new segment.
@@ -3446,6 +3464,10 @@ descriptor pages.
 @param space             system tablespace
 @param last_used_extent  value is 0 in case of finding the last used
                          extent; else it could be last used extent
+@param mtr               mini-transaction
+@param max_used_extent   Maximum used extent when
+                         innodb_sys_tablespace_shrink_extensive
+                         is enabled
 @param old_xdes_entry    nullptr or object to store the
                          old page content of "to be modified"
                          extent descriptor pages
@@ -3453,6 +3475,7 @@ descriptor pages.
 __attribute__((warn_unused_result))
 dberr_t fsp_traverse_extents(
   fil_space_t *space, uint32_t *last_used_extent, mtr_t *mtr,
+  uint32_t max_used_extent,
   fsp_xdes_old_page *old_xdes_entry= nullptr)
 {
   dberr_t err= DB_SUCCESS;
@@ -3498,6 +3521,8 @@ dberr_t fsp_traverse_extents(
                !(cur_extent & (srv_page_size - 1)) &&
                xdes_get_n_used(descr) == 2)
         /* Extent Descriptor Page */
+        *last_used_extent= cur_extent;
+      else if (max_used_extent && cur_extent > max_used_extent)
         *last_used_extent= cur_extent;
       else return DB_SUCCESS;
     }
@@ -3574,14 +3599,138 @@ dberr_t fsp_sys_tablespace_validate()
 }
 #endif /* UNIV_DEBUG */
 
+/** Get the maximum used extent from the given list
+@param base	file page
+@param boffset	obyte iffset
+@param mtr      mini-transaction
+@return maximum used extent from the given list */
+static
+uint32_t flst_get_max_extent(
+  const buf_block_t *base, uint16_t boffset, mtr_t *mtr)
+{
+  const uint32_t len= flst_get_len(base->page.frame + boffset);
+  fil_addr_t addr= flst_get_first(base->page.frame + boffset);
+  uint32_t max_used_extent= 0;
+  for (uint32_t i= len; i--; )
+  {
+    ut_ad(addr.boffset >= FIL_PAGE_DATA);
+    ut_ad(addr.boffset < base->physical_size() - FIL_PAGE_DATA_END);
+    const buf_block_t *b=
+      buf_page_get_gen(page_id_t(base->page.id().space(), addr.page),
+                       base->zip_size(), RW_SX_LATCH, nullptr, BUF_GET, mtr);
+    ut_ad(b);
+
+    /* Descriptor offset to page number */
+    uint32_t page= addr.page * static_cast<uint32_t>(srv_page_size);
+    page += ((addr.boffset - XDES_ARR_OFFSET) / XDES_SIZE) * FSP_EXTENT_SIZE;
+    max_used_extent= std::max(
+      max_used_extent, get_extent_start_page(page));
+    addr= flst_get_next_addr(b->page.frame + addr.boffset);
+    mtr->release_last_page();
+  }
+
+  ut_ad(addr.page == FIL_NULL);
+  return max_used_extent;
+}
+
+
+/** Get the maximum used extent from the given file segment header
+@param header file segment header
+@param mtr    mini-transaction
+@return maximum used extent */
+uint32_t fseg_get_max_extent(const fseg_header_t *header, mtr_t *mtr)
+{
+  buf_block_t *iblock;
+  fseg_inode_t *inode= fseg_inode_try_get(header, 0, 0, mtr, &iblock);
+  const uint16_t ioffset= uint16_t(inode - iblock->page.frame);
+  uint32_t max_used_extent= 0;
+  fseg_get_n_frag_pages(inode, &max_used_extent);
+  uint32_t used_extent= flst_get_max_extent(
+    iblock, uint16_t(ioffset + FSEG_NOT_FULL), mtr);
+
+  max_used_extent= std::max(max_used_extent, used_extent);
+  used_extent= flst_get_max_extent(
+    iblock, uint16_t(ioffset + FSEG_FULL), mtr);
+
+  max_used_extent= std::max(max_used_extent, used_extent);
+  used_extent= flst_get_max_extent(
+    iblock, uint16_t(ioffset + FSEG_FREE), mtr);
+
+  max_used_extent= std::max(max_used_extent, used_extent);
+  return max_used_extent;
+}
+
+/** Get the maximum used extent in the system tablespace
+@param sys_root_pages  all system tablespace index root page
+@param max_used_extent maximum used extent
+@return error code */
+dberr_t fsp_get_max_sys_used_index_extent(
+  const std::vector<uint32_t> &sys_root_pages,
+  uint32_t &max_used_extent)
+{
+  dberr_t err= DB_SUCCESS;
+  mtr_t mtr;
+  for (auto page : sys_root_pages)
+  {
+    mtr.start();
+    buf_block_t *block= buf_page_get_gen(page_id_t{0, page}, 0, RW_S_LATCH,
+      nullptr, BUF_GET, &mtr, &err);
+    if (!block)
+    {
+      mtr.commit();
+      return err;
+    }
+
+    max_used_extent= std::max(max_used_extent,
+                              get_extent_start_page(page));
+    /* Get non-leaf segment pages */
+    fseg_header_t *seg_header= block->page.frame + PAGE_HEADER
+                               + PAGE_BTR_SEG_TOP;
+    ut_a(mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 0);
+    uint32_t seg_page_no= mach_read_from_4(
+      seg_header + FSEG_HDR_PAGE_NO);
+    max_used_extent= std::max(max_used_extent,
+                              get_extent_start_page(seg_page_no));
+
+    max_used_extent= std::max(max_used_extent,
+                              fseg_get_max_extent(seg_header, &mtr));
+
+    /* Get leaf segment pages */
+    seg_header= block->page.frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    ut_a(mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 0);
+    seg_page_no= mach_read_from_4(seg_header + FSEG_HDR_PAGE_NO);
+
+    max_used_extent= std::max(max_used_extent,
+                              get_extent_start_page(seg_page_no));
+
+    max_used_extent= std::max(max_used_extent,
+                              fseg_get_max_extent(seg_header, &mtr));
+    mtr.commit();
+  }
+
+  return err;
+}
+
 void fsp_system_tablespace_truncate()
 {
+  dberr_t err= DB_SUCCESS;
+  uint32_t max_used_extent= 0;
+  if (srv_sys_shrink_extensive)
+  {
+    std::vector<uint32_t> sys_root_pages;
+    err= dict_get_sys_tablespace_indexes(sys_root_pages);
+    if (err) return;
+
+    max_used_extent= std::max(max_used_extent, buf_dblwr.block2_page());
+    fsp_get_max_sys_used_index_extent(sys_root_pages, max_used_extent);
+  }
+
   uint32_t last_used_extent= 0;
   fil_space_t *space= fil_system.sys_space;
   mtr_t mtr;
   mtr.start();
   mtr.x_lock_space(space);
-  dberr_t err= fsp_traverse_extents(space, &last_used_extent, &mtr);
+  err= fsp_traverse_extents(space, &last_used_extent, &mtr, max_used_extent);
   if (err != DB_SUCCESS)
   {
 func_exit:
@@ -3619,7 +3768,8 @@ func_exit:
     /* Take the rough estimation of modified extent
     descriptor page and store their old state */
     fsp_xdes_old_page old_xdes_list;
-    err= fsp_traverse_extents(space, &last_used_extent, &mtr, &old_xdes_list);
+    err= fsp_traverse_extents(space, &last_used_extent, &mtr,
+                              0, &old_xdes_list);
 
     if (err == DB_OUT_OF_MEMORY)
     {

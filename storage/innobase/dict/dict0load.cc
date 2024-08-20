@@ -3224,3 +3224,43 @@ load_next_index:
 	ut_free(pcur.old_rec_buf);
 	DBUG_RETURN(DB_SUCCESS);
 }
+
+dberr_t dict_get_sys_tablespace_indexes(
+  std::vector<uint32_t> &sys_root_pages)
+{
+  mtr_t mtr;
+  btr_pcur_t pcur;
+  ulint len;
+  dberr_t err= DB_SUCCESS;
+  mtr.start();
+  dict_sys.lock(SRW_LOCK_CALL);
+  for (const rec_t *rec= dict_startscan_system(
+         &pcur, &mtr, dict_sys.sys_indexes);
+       rec; rec= dict_getnext_system_low(&pcur, &mtr))
+  {
+    const byte *field= rec_get_nth_field_old(
+      rec, DICT_FLD__SYS_INDEXES__SPACE, &len);
+    if (len != 4)
+    {
+      err= DB_CORRUPTION;
+      break;
+    }
+    uint32_t space= mach_read_from_4(field);
+    if (space > 0) continue;
+
+    field= rec_get_nth_field_old(
+      rec, DICT_FLD__SYS_INDEXES__PAGE_NO, &len);
+    if (len != 4)
+    {
+      err= DB_CORRUPTION;
+      break;
+    }
+    uint32_t root_page_no= mach_read_from_4(field);
+    if (root_page_no != FIL_NULL)
+      sys_root_pages.push_back(root_page_no);
+  }
+
+  mtr.commit();
+  dict_sys.unlock();
+  return err;
+}
