@@ -921,7 +921,7 @@ typedef struct system_variables
 
   /* Temporary for HNSW tests */
   uint mhnsw_max_edges_per_node;
-  double mhnsw_limit_multiplier;
+  uint mhnsw_min_limit;
 } SV;
 
 /**

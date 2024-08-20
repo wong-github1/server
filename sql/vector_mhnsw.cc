@@ -894,7 +894,7 @@ static int search_layer(MHNSW_Context *ctx, TABLE *graph, const FVector *target,
   {
     skip_deleted= layer == 0;
     if (ef > 1 || layer == 0)
-      ef= ef * graph->in_use->variables.mhnsw_limit_multiplier;
+      ef= std::max(graph->in_use->variables.mhnsw_min_limit, ef);
   }
 
   // WARNING! heuristic here

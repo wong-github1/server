@@ -690,17 +690,15 @@ The following specify which files/extra groups are read (specified before remain
  Unused. Deprecated, will be removed in a future release.
  --mhnsw-cache-size=# 
  Size of the cache for the MHNSW vector index
- --mhnsw-limit-multiplier=# 
- Defines the number of result candidates to look for in
- the vector index for ORDER BY ... LIMIT N queries.
- Specified in term of LIMIT (1 means look for exactly N
- candidates, 2 means look for 2*N, etc). Larger values
- means the search will be slower, but the result will be
- closer to perfect
  --mhnsw-max-edges-per-node=# 
  Larger values means slower INSERT, larger index size and
- higher memory consumption, but better search results. Not
- used for SELECT
+ higher memory consumption, but better search results
+ --mhnsw-min-limit=# Defines the minimal number of result candidates to look
+ for in the vector index for ORDER BY ... LIMIT N queries.
+ The search will never search for less rows than that,
+ even if LIMIT is smaller. This notably improves the
+ search quality at low LIMIT values, at the expense of
+ search time
  --min-examined-row-limit=# 
  Alias for log_slow_min_examined_row_limit. Don't write
  queries to slow log that examine fewer rows than that
@@ -1795,8 +1793,8 @@ memlock FALSE
 metadata-locks-cache-size 1024
 metadata-locks-hash-instances 8
 mhnsw-cache-size 16777216
-mhnsw-limit-multiplier 2
 mhnsw-max-edges-per-node 6
+mhnsw-min-limit 20
 min-examined-row-limit 0
 mrr-buffer-size 262144
 myisam-block-size 1024
