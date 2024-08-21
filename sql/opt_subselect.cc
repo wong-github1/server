@@ -1824,6 +1824,10 @@ static bool convert_subq_to_sj(JOIN *parent_join, Item_in_subselect *subq_pred)
       DBUG_ASSERT(dummy == tl->jtbm_subselect);
     }
     SELECT_LEX *old_sl= tl->select_lex;
+    if (old_sl)
+      old_sl->context.select_lex= parent_join->select_lex;
+    if (tl->referencing_view)
+      tl->referencing_view->select_lex= parent_join->select_lex;
     tl->select_lex= parent_join->select_lex; 
     for (TABLE_LIST *emb= tl->embedding;
          emb && emb->select_lex == old_sl;
