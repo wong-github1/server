@@ -990,13 +990,14 @@ static int btr_latch_prev(buf_block_t *block, page_id_t page_id,
 
     prev= buf_page_get_gen(page_id, zip_size, rw_latch, prev,
                            BUF_GET, mtr, err);
-    if (!prev)
-      return 0;
 
     if (rw_latch == RW_S_LATCH)
       block->page.lock.s_lock();
     else
       block->page.lock.x_lock();
+
+    if (!prev)
+      return 0;
     goto did_wait;
   }
 
