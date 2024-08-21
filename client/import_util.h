@@ -61,8 +61,10 @@ public:
   std::string
   generate_alter_drop(const std::vector<KeyDefinition> &definitions) const;
 
+  std::string to_string() const;
+
 public:
- 
+
   std::string drop_constraints_sql() const
   {
     return generate_alter_drop(constraints);

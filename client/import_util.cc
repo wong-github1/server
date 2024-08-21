@@ -48,14 +48,14 @@ std::string extract_first_create_table(const std::string &script)
 
 TableDDLInfo::TableDDLInfo(const std::string &create_table_stmt)
 {
-  std::regex primary_key_regex(R"(^\s*(PRIMARY\s+KEY\s+(.*?)),?\n)",
+  std::regex primary_key_regex(R"(\n\s*(PRIMARY\s+KEY\s+(.*?)),?\n)",
                                std::regex::icase);
 
   std::regex constraint_regex(
-      R"(^\s*(CONSTRAINT\s+(`?(?:[^`]|``)+`?)\s+.*?),?\n)", std::regex::icase);
+      R"(\n\s*(CONSTRAINT\s+(`?(?:[^`]|``)+`?)\s+.*?),?\n)", std::regex::icase);
 
   std::regex index_regex(
-      R"(^\s*((UNIQUE\s+)?(INDEX|KEY)\s+(`?(?:[^`]|``)+`?)\s+.*?),?\n)",
+      R"(\n\s*((UNIQUE\s+)?(INDEX|KEY)\s+(`?(?:[^`]|``)+`?)\s+.*?),?\n)",
       std::regex::icase);
 
   std::regex engine_regex(R"(\bENGINE\s*=\s*(\w+))", std::regex::icase);
@@ -179,6 +179,33 @@ std::string TableDDLInfo::generate_alter_drop(
           definition.name;
   }
   return sql;
+}
+
+std::string TableDDLInfo::to_string() const
+{
+  std::string result= "Table Name: " + table_name + "\n";
+  result+= "Primary Key:\n";
+  result+= "Type: " + definition_type_to_string(primary_key.type) + "\n";
+  result+= "Definition: " + primary_key.definition + "\n";
+  result+= "Name: " + primary_key.name + "\n";
+  result+= "\nConstraints: " + std::to_string(constraints.size());
+  result+= "\n";
+  for (const auto& entry : constraints)
+  {
+    result+= " Type: " + definition_type_to_string(entry.type) + "\n";
+    result+= " Definition: " + entry.definition + "\n";
+    result+= " Name: " + entry.name + "\n";
+  }
+  result+= "\nSecondary indexes: " + std::to_string(secondary_indexes.size());
+  result+= "\n";
+  for (const auto &entry : secondary_indexes)
+  {
+    result+= " Type: " + definition_type_to_string(entry.type) + "\n";
+    result+= " Definition: " + entry.definition + "\n";
+    result+= " Name: " + entry.name + "\n";
+  }
+  result+= "Storage Engine: " + storage_engine + "\n";
+  return result;
 }
 
 #ifdef MAIN
