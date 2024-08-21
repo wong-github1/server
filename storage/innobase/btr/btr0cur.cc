@@ -973,26 +973,40 @@ static int btr_latch_prev(buf_block_t *block, page_id_t page_id,
  retry:
   /* Pass no_wait pointer to ensure that we don't wait on the current page
   latch while holding the next page latch to avoid latch ordering violation. */
-  bool no_wait= false;
+  bool would_block= false;
   int ret= 1;
 
   buf_block_t *prev= buf_page_get_gen(page_id, zip_size, RW_NO_LATCH, nullptr,
-                                      BUF_GET, mtr, err, false, &no_wait);
+                                      BUF_GET, mtr, err, false, &would_block);
   if (UNIV_UNLIKELY(!prev))
   {
-    /* Check if we had to return because we couldn't wait on latch. */
-    if (no_wait)
-      goto ordered_latch;
-    return 0;
+    if (!would_block)
+      return 0;
+
+    if (rw_latch == RW_S_LATCH)
+      block->page.lock.s_unlock();
+    else
+      block->page.lock.x_unlock();
+
+    prev= buf_page_get_gen(page_id, zip_size, rw_latch, prev,
+                           BUF_GET, mtr, err);
+    if (!prev)
+      return 0;
+
+    if (rw_latch == RW_S_LATCH)
+      block->page.lock.s_lock();
+    else
+      block->page.lock.x_lock();
+    goto did_wait;
   }
 
   static_assert(MTR_MEMO_PAGE_S_FIX == mtr_memo_type_t(BTR_SEARCH_LEAF), "");
   static_assert(MTR_MEMO_PAGE_X_FIX == mtr_memo_type_t(BTR_MODIFY_LEAF), "");
+  mtr->lock_register(prev_savepoint, mtr_memo_type_t(rw_latch));
 
   if (rw_latch == RW_S_LATCH
       ? prev->page.lock.s_lock_try() : prev->page.lock.x_lock_try())
   {
-    mtr->lock_register(prev_savepoint, mtr_memo_type_t(rw_latch));
     if (UNIV_UNLIKELY(prev->page.id() != page_id))
     {
     fail:
@@ -1004,20 +1018,19 @@ static int btr_latch_prev(buf_block_t *block, page_id_t page_id,
   else
   {
     ut_ad(mtr->at_savepoint(mtr->get_savepoint() - 1)->page.id() == page_id);
-    mtr->release_last_page();
-ordered_latch:
+    
     if (rw_latch == RW_S_LATCH)
+    {
       block->page.lock.s_unlock();
+      prev->page.lock.s_lock();
+    }
     else
+    {
       block->page.lock.x_unlock();
+      prev->page.lock.x_lock();
+    }
 
-    prev= buf_page_get_gen(page_id, zip_size, rw_latch, prev,
-                           BUF_GET, mtr, err);
-    if (rw_latch == RW_S_LATCH)
-      block->page.lock.s_lock();
-    else
-      block->page.lock.x_lock();
-
+  did_wait:
     const page_id_t prev_page_id= page_id;
     page_id.set_page_no(btr_page_get_prev(page));
 
