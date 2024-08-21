@@ -1018,16 +1018,18 @@ static int btr_latch_prev(buf_block_t *block, page_id_t page_id,
   else
   {
     ut_ad(mtr->at_savepoint(mtr->get_savepoint() - 1)->page.id() == page_id);
-    
+
     if (rw_latch == RW_S_LATCH)
     {
       block->page.lock.s_unlock();
       prev->page.lock.s_lock();
+      block->page.lock.s_lock();
     }
     else
     {
       block->page.lock.x_unlock();
       prev->page.lock.x_lock();
+      block->page.lock.x_lock();
     }
 
   did_wait:
