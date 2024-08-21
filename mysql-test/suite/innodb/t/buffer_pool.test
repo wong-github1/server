@@ -1,0 +1,20 @@
+--source include/have_innodb.inc
+
+SET GLOBAL innodb_max_purge_lag_wait=0;
+CREATE TEMPORARY TABLE t1(a SMALLINT PRIMARY KEY) ENGINE=InnoDB;
+BEGIN;
+SET @read0=
+(SELECT CAST(variable_value AS INTEGER) FROM information_schema.global_status
+WHERE variable_name = 'innodb_buffer_pool_read_requests');
+INSERT INTO t1 VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+SET @read1=
+(SELECT CAST(variable_value AS INTEGER) FROM information_schema.global_status
+WHERE variable_name = 'innodb_buffer_pool_read_requests');
+INSERT INTO t1 VALUES (10),(11),(12),(13),(14),(15),(16),(17),(18),(19);
+SET @read2=
+(SELECT CAST(variable_value AS INTEGER) FROM information_schema.global_status
+WHERE variable_name = 'innodb_buffer_pool_read_requests');
+COMMIT;
+
+DROP TABLE t1;
+SELECT @read1-@read0, @read2-@read1;

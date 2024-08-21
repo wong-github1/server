@@ -1331,27 +1331,33 @@ dberr_t btr_cur_t::search_leaf(const dtuple_t *tuple, page_cur_mode_t mode,
       We may have to reacquire the page latch in a different mode. */
       switch (rw_latch) {
       case RW_S_LATCH:
-        if ((latch_mode & ~12) != RW_S_LATCH)
+        if (!(latch_mode & BTR_SEARCH_LEAF))
         {
+          rw_latch= RW_X_LATCH;
           ut_ad(rw_lock_type_t(latch_mode & ~12) == RW_X_LATCH);
-          goto relatch_x;
+          mtr->lock_register(block_savepoint, MTR_MEMO_PAGE_X_FIX);
+          if (!block->page.lock.s_x_upgrade_try())
+          {
+            block->page.lock.s_unlock();
+            block->page.lock.x_lock();
+          }
         }
-        if (latch_mode != BTR_MODIFY_PREV)
-        {
-          if (!latch_by_caller)
-            /* Release the tree s-latch */
-            mtr->rollback_to_savepoint(savepoint, savepoint + 1);
-          goto reached_latched_leaf;
-        }
-        /* fall through */
+        /* The tree must remain a single page while we hold index()->lock. */
+        ut_ad(page_is_leaf(block->page.frame));
+        ut_ad(!block->page.is_freed());
+        if (latch_mode == BTR_MODIFY_PREV)
+          goto reached_leaf;
+        if (!latch_by_caller)
+          /* Release the tree s-latch */
+          mtr->rollback_to_savepoint(savepoint, savepoint + 1);
+        goto reached_latched_leaf;
       case RW_SX_LATCH:
-        ut_ad(rw_latch == RW_S_LATCH ||
-              latch_mode == BTR_MODIFY_ROOT_AND_LEAF);
-      relatch_x:
-        mtr->rollback_to_savepoint(block_savepoint);
-        height= ULINT_UNDEFINED;
+        ut_ad(latch_mode == BTR_MODIFY_ROOT_AND_LEAF);
+        static_assert(int{BTR_MODIFY_ROOT_AND_LEAF} == int{RW_SX_LATCH}, "");
         rw_latch= RW_X_LATCH;
-        goto search_loop;
+        mtr->lock_register(block_savepoint, MTR_MEMO_PAGE_X_FIX);
+        block->page.lock.u_x_upgrade();
+        goto reached_root_and_leaf;
       case RW_X_LATCH:
         if (latch_mode == BTR_MODIFY_TREE)
           goto reached_index_root_and_leaf;
@@ -1359,7 +1365,6 @@ dberr_t btr_cur_t::search_leaf(const dtuple_t *tuple, page_cur_mode_t mode,
       case RW_NO_LATCH:
         ut_ad(0);
       }
-      goto reached_leaf;
     }
   }
   else if (UNIV_UNLIKELY(height != page_level))
