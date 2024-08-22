@@ -1330,7 +1330,7 @@ dberr_t btr_cur_t::search_leaf(const dtuple_t *tuple, page_cur_mode_t mode,
     ut_a(page_zip_validate(page_zip, block->page.frame, index()));
 #endif /* UNIV_ZIP_DEBUG */
 
-  const uint32_t page_level= btr_page_get_level(block->page.frame);
+  uint32_t page_level= btr_page_get_level(block->page.frame);
 
   if (height == ULINT_UNDEFINED)
   {
@@ -1338,6 +1338,7 @@ dberr_t btr_cur_t::search_leaf(const dtuple_t *tuple, page_cur_mode_t mode,
 #ifdef BTR_CUR_ADAPT
     info->root_guess= block;
 #endif
+  reached_root:
     height= page_level;
     tree_height= height + 1;
 
@@ -1356,11 +1357,19 @@ dberr_t btr_cur_t::search_leaf(const dtuple_t *tuple, page_cur_mode_t mode,
           {
             block->page.lock.s_unlock();
             block->page.lock.x_lock();
+            /* Dropping the index tree (and freeing the root page)
+            should be impossible while we hold index()->lock. */
+            ut_ad(!block->page.is_freed());
+            page_level= btr_page_get_level(block->page.frame);
+            if (UNIV_UNLIKELY(page_level != 0))
+            {
+              /* btr_root_raise_and_insert() was executed meanwhile */
+              ut_ad(mtr->memo_contains_flagged(&index()->lock,
+                                               MTR_MEMO_S_LOCK));
+              goto reached_root;
+            }
           }
         }
-        /* The tree must remain a single page while we hold index()->lock. */
-        ut_ad(page_is_leaf(block->page.frame));
-        ut_ad(!block->page.is_freed());
         if (latch_mode == BTR_MODIFY_PREV)
           goto reached_leaf;
         if (!latch_by_caller)
