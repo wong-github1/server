@@ -6701,7 +6701,7 @@ bool LEX::sp_variable_declarations_row_finalize(THD *thd, int nvars,
         ...
       END;
   */
-  if (sphead->row_fill_field_definitions(thd, row))
+  if (sphead->composite_datatype_fill_field_definitions(thd, row))
     return true;
 
   for (uint i= 0 ; i < (uint) nvars ; i++)
@@ -11134,7 +11134,7 @@ void mark_or_conds_to_avoid_pushdown(Item *cond)
        In this case condition is transformed and pushed into attach_to_conds
        list.
     2. Part of some other condition c1 that can't be entirely pushed
-       (if с1 isn't marked with any flag).
+       (if ??1 isn't marked with any flag).
 
        For example:
 
@@ -11942,8 +11942,8 @@ bool LEX::stmt_alter_procedure_start(sp_name *name)
 }
 
 
-Spvar_definition *LEX::row_field_name(THD *thd, const Lex_ident_sys_st &name)
-{
+Spvar_definition *LEX::composite_data_field_name(THD *thd, const Lex_ident_sys_st &name)
+{ 
   Spvar_definition *res;
   if (unlikely(check_string_char_length(&name, 0, NAME_CHAR_LEN,
                                         system_charset_info, 1)))

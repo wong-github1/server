@@ -4945,7 +4945,7 @@ public:
 
   sp_condition_value *stmt_signal_value(const Lex_ident_sys_st &ident);
 
-  Spvar_definition *row_field_name(THD *thd, const Lex_ident_sys_st &name);
+  Spvar_definition *composite_data_field_name(THD *thd, const Lex_ident_sys_st &name);
 
   bool set_field_type_udt(Lex_field_type_st *type,
                           const LEX_CSTRING &name,

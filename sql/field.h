@@ -5579,11 +5579,8 @@ public:
 };
 
 
-/**
-  List of ROW element definitions, e.g.:
-    DECLARE a ROW(a INT,b VARCHAR(10))
-*/
-class Row_definition_list: public List<class Spvar_definition>
+template <class RowOrRec>
+class Composite_data_field_definition_list: public List<class Spvar_definition>
 {
 public:
   inline bool eq_name(const Spvar_definition *def, const LEX_CSTRING *name) const;
@@ -5606,10 +5603,10 @@ public:
     }
     return 0;
   }
-  static Row_definition_list *make(MEM_ROOT *mem_root, Spvar_definition *var)
+  static RowOrRec *make(MEM_ROOT *mem_root, Spvar_definition *var)
   {
-    Row_definition_list *list;
-    if (!(list= new (mem_root) Row_definition_list()))
+    RowOrRec *list;
+    if (!(list= new (mem_root) RowOrRec()))
       return NULL;
     return list->push_back(var, mem_root) ? NULL : list;
   }
@@ -5618,6 +5615,20 @@ public:
   bool adjust_formal_params_to_actual_params(THD *thd,
                                              Item **args, uint arg_count);
   bool resolve_type_refs(THD *);
+};
+
+
+/**
+  List of ROW element definitions, e.g.:
+    DECLARE a ROW(a INT,b VARCHAR(10))
+*/
+class Row_definition_list: public Composite_data_field_definition_list<Row_definition_list>
+{
+};
+
+
+class Rec_definition_list: public Composite_data_field_definition_list<Rec_definition_list>
+{
 };
 
 /**
@@ -5739,7 +5750,8 @@ public:
 };
 
 
-inline bool Row_definition_list::eq_name(const Spvar_definition *def,
+template <class RowOrRec>
+inline bool Composite_data_field_definition_list<RowOrRec>::eq_name(const Spvar_definition *def,
                                          const LEX_CSTRING *name) const
 {
   return def->field_name.streq(*name);
