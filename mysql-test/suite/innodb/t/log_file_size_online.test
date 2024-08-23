@@ -4,15 +4,24 @@
 
 let SEARCH_FILE = $MYSQLTEST_VARDIR/log/mysqld.1.err;
 
-SET GLOBAL innodb_log_file_size=4194304;
-SHOW VARIABLES LIKE 'innodb_log_file_size';
-SELECT global_value FROM information_schema.system_variables
-WHERE variable_name = 'innodb_log_file_size';
+--connect con1,localhost,root
+# This may block until some InnoDB persistent data is changed.
+send SET GLOBAL innodb_log_file_size=4194304;
+--connection default
 
+# Modify the persistent database state to trigger a checkpoint and resizing.
 CREATE TABLE t (
   a INT PRIMARY KEY AUTO_INCREMENT,
   b CHAR(255) NOT NULL)
 ENGINE=INNODB;
+
+--connection con1
+reap;
+SHOW VARIABLES LIKE 'innodb_log_file_size';
+SELECT global_value FROM information_schema.system_variables
+WHERE variable_name = 'innodb_log_file_size';
+--disconnect con1
+--connection default
 
 INSERT INTO t SELECT NULL, REPEAT('a', 255) FROM seq_1_to_20000;
 
@@ -25,17 +34,28 @@ SHOW VARIABLES LIKE 'innodb_log_file_size';
 let SEARCH_PATTERN = InnoDB: Resized log to 4\\.000MiB;
 --source include/search_pattern_in_file.inc
 
-UPDATE t SET b='' WHERE a<10;
+send SET GLOBAL innodb_log_file_size=5242880;
 
-SET GLOBAL innodb_log_file_size=5242880;
+--connect con1,localhost,root
+send UPDATE t SET b='' WHERE a<10;
+
+--connection default
+reap;
 SHOW VARIABLES LIKE 'innodb_log_file_size';
 SELECT global_value FROM information_schema.system_variables
 WHERE variable_name = 'innodb_log_file_size';
 
+--connection con1
+reap;
+--disconnect con1
+--connection default
+
+--let $shutdown_timeout=0
 --let $restart_parameters=
 --source include/restart_mysqld.inc
 
 SELECT * FROM t WHERE a<10;
+SELECT COUNT(*),LENGTH(b) FROM t GROUP BY b;
 
 SHOW VARIABLES LIKE 'innodb_log_file_size';
 let SEARCH_PATTERN = InnoDB: Resized log to 5\\.000MiB;
