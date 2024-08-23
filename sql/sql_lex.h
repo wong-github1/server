@@ -4007,6 +4007,10 @@ public:
                                              Row_definition_list *row,
                                              Item *def,
                                              const LEX_CSTRING &expr_str);
+  bool sp_variable_declarations_rec_finalize(THD *thd, int nvars,
+                                             Rec_definition_list *rec,
+                                             Item *def,
+                                             const LEX_CSTRING &expr_str);
   bool sp_variable_declarations_with_ref_finalize(THD *thd, int nvars,
                                                   Qualified_column_ident *col,
                                                   Item *def,
@@ -4945,7 +4949,7 @@ public:
 
   sp_condition_value *stmt_signal_value(const Lex_ident_sys_st &ident);
 
-  Spvar_definition *row_field_name(THD *thd, const Lex_ident_sys_st &name);
+  Spvar_definition *composite_data_field_name(THD *thd, const Lex_ident_sys_st &name);
 
   bool set_field_type_udt(Lex_field_type_st *type,
                           const LEX_CSTRING &name,

@@ -726,6 +726,7 @@ private:
   const Type_handler *m_handler;
   CHARSET_INFO *m_ci;
 public:
+
   void set(const Type_handler *handler,
            Lex_length_and_dec_st length_and_dec,
            CHARSET_INFO *cs= NULL)
@@ -841,14 +842,15 @@ public:
   int vars;
   int conds;
   int curs;
+  int recs;
   void init()
   {
-    vars= conds= hndlrs= curs= 0;
+    vars= conds= hndlrs= curs= recs= 0;
   }
   void init_using_vars(uint nvars)
   {
     vars= nvars;
-    conds= hndlrs= curs= 0;
+    conds= hndlrs= curs= recs= 0;
   }
   void join(const Lex_spblock_st &b1, const Lex_spblock_st &b2)
   {
@@ -856,6 +858,7 @@ public:
     conds= b1.conds + b2.conds;
     hndlrs= b1.hndlrs + b2.hndlrs;
     curs= b1.curs + b2.curs;
+    recs= b1.recs + b2.recs;
   }
 };
 
@@ -866,7 +869,7 @@ public:
   Lex_spblock() { init(); }
   Lex_spblock(const Lex_spblock_handlers_st &other)
   {
-    vars= conds= curs= 0;
+    vars= conds= curs= recs= 0;
     hndlrs= other.hndlrs;
   }
 };

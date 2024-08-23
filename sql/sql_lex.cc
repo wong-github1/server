@@ -6701,7 +6701,7 @@ bool LEX::sp_variable_declarations_row_finalize(THD *thd, int nvars,
         ...
       END;
   */
-  if (sphead->row_fill_field_definitions(thd, row))
+  if (sphead->composite_datatype_fill_field_definitions(thd, row))
     return true;
 
   for (uint i= 0 ; i < (uint) nvars ; i++)
@@ -6716,6 +6716,32 @@ bool LEX::sp_variable_declarations_row_finalize(THD *thd, int nvars,
                                            expr_str))
     return true;
   spcont->declare_var_boundary(0);
+  return sphead->restore_lex(thd);
+}
+
+
+bool LEX::sp_variable_declarations_rec_finalize(THD *thd, int nvars,
+                                                Rec_definition_list *rec,
+                                                Item *dflt_value_item,
+                                                const LEX_CSTRING &expr_str)
+{
+  DBUG_ASSERT(rec);
+
+#if 0 // kokseng todo
+  for (uint i= 0 ; i < (uint) nvars ; i++)
+  {
+    sp_variable *spvar= spcont->get_last_context_variable((uint) nvars - 1 - i);
+    spvar->field_def.set_row_field_definitions(row);
+    if (sphead->fill_spvar_definition(thd, &spvar->field_def, &spvar->name))
+      return true;
+  }
+
+  if (sp_variable_declarations_set_default(thd, nvars, dflt_value_item,
+                                           expr_str))
+    return true;
+  spcont->declare_var_boundary(0);
+#endif
+
   return sphead->restore_lex(thd);
 }
 
@@ -11942,8 +11968,8 @@ bool LEX::stmt_alter_procedure_start(sp_name *name)
 }
 
 
-Spvar_definition *LEX::row_field_name(THD *thd, const Lex_ident_sys_st &name)
-{
+Spvar_definition *LEX::composite_data_field_name(THD *thd, const Lex_ident_sys_st &name)
+{ 
   Spvar_definition *res;
   if (unlikely(check_string_char_length(&name, 0, NAME_CHAR_LEN,
                                         system_charset_info, 1)))
