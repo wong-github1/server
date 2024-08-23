@@ -18561,11 +18561,15 @@ static void innodb_log_file_size_update(THD *thd, st_mysql_sys_var*,
 
         set_timespec(abstime, 5);
         mysql_mutex_lock(&buf_pool.flush_list_mutex);
-        const bool in_progress(buf_pool.get_oldest_modification(LSN_MAX) <
-                               log_sys.resize_in_progress());
-        if (in_progress)
+        const lsn_t oldest{buf_pool.get_oldest_modification(LSN_MAX)};
+        const lsn_t resizing{log_sys.resize_in_progress()};
+        static_assert(LSN_MAX + 1 == 0, "oldest + 1 must wrap around to 0");
+        if (resizing > oldest || resizing > oldest + 1)
+        {
+          buf_pool.page_cleaner_wakeup(true);
           my_cond_timedwait(&buf_pool.done_flush_list,
                             &buf_pool.flush_list_mutex.m_mutex, &abstime);
+        }
         mysql_mutex_unlock(&buf_pool.flush_list_mutex);
         if (!log_sys.resize_in_progress())
           break;
