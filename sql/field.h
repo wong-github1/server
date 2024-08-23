@@ -5579,11 +5579,8 @@ public:
 };
 
 
-/**
-  List of ROW element definitions, e.g.:
-    DECLARE a ROW(a INT,b VARCHAR(10))
-*/
-class Row_definition_list: public List<class Spvar_definition>
+template <class CompositeType>
+class Composite_data_field_definition_list: public List<class Spvar_definition>
 {
 public:
   inline bool eq_name(const Spvar_definition *def, const LEX_CSTRING *name) const;
@@ -5606,10 +5603,10 @@ public:
     }
     return 0;
   }
-  static Row_definition_list *make(MEM_ROOT *mem_root, Spvar_definition *var)
+  static CompositeType *make(MEM_ROOT *mem_root, Spvar_definition *var)
   {
-    Row_definition_list *list;
-    if (!(list= new (mem_root) Row_definition_list()))
+    CompositeType *list;
+    if (!(list= new (mem_root) CompositeType()))
       return NULL;
     return list->push_back(var, mem_root) ? NULL : list;
   }
@@ -5618,6 +5615,20 @@ public:
   bool adjust_formal_params_to_actual_params(THD *thd,
                                              Item **args, uint arg_count);
   bool resolve_type_refs(THD *);
+};
+
+
+/**
+  List of ROW element definitions, e.g.:
+    DECLARE a ROW(a INT,b VARCHAR(10))
+*/
+class Row_definition_list: public Composite_data_field_definition_list<Row_definition_list>
+{
+};
+
+
+class Rec_definition_list: public Composite_data_field_definition_list<Rec_definition_list>
+{
 };
 
 /**
@@ -5646,13 +5657,15 @@ class Spvar_definition: public Column_definition
   bool m_cursor_rowtype_ref;                       // for cursor%ROWTYPE
   uint m_cursor_rowtype_offset;                    // for cursor%ROWTYPE
   Row_definition_list *m_row_field_definitions;    // for ROW
+  Rec_definition_list *m_rec_field_definitions;    // for RECORD
 public:
   Spvar_definition()
    :m_column_type_ref(NULL),
     m_table_rowtype_ref(NULL),
     m_cursor_rowtype_ref(false),
     m_cursor_rowtype_offset(0),
-    m_row_field_definitions(NULL)
+    m_row_field_definitions(NULL),
+    m_rec_field_definitions(NULL)
   { }
   Spvar_definition(THD *thd, Field *field)
    :Column_definition(thd, field, NULL),
@@ -5660,7 +5673,8 @@ public:
     m_table_rowtype_ref(NULL),
     m_cursor_rowtype_ref(false),
     m_cursor_rowtype_offset(0),
-    m_row_field_definitions(NULL)
+    m_row_field_definitions(NULL),
+    m_rec_field_definitions(NULL)
   { }
   const Type_handler *type_handler() const
   {
@@ -5735,11 +5749,11 @@ public:
     set_handler(&type_handler_row);
     m_row_field_definitions= list;
   }
-
 };
 
 
-inline bool Row_definition_list::eq_name(const Spvar_definition *def,
+template <class CompositeType>
+inline bool Composite_data_field_definition_list<CompositeType>::eq_name(const Spvar_definition *def,
                                          const LEX_CSTRING *name) const
 {
   return def->field_name.streq(*name);

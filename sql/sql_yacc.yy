@@ -246,6 +246,7 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
   Create_field *create_field;
   Spvar_definition *spvar_definition;
   Row_definition_list *spvar_definition_list;
+  Rec_definition_list *sprec_definition_list;
   const Type_handler *type_handler;
   const class Sp_handler *sp_handler;
   CHARSET_INFO *charset;
@@ -286,6 +287,7 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
   class sp_head *sphead;
   class sp_name *spname;
   class sp_variable *spvar;
+  class sp_record *sprec;
   class With_element_head *with_element_head;
   class With_clause *with_clause;
   class Virtual_column_info *virtual_column;
@@ -730,6 +732,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd>  OTHERS_MARIADB_SYM            // SQL-2011-N, PLSQL-R
 %token  <kwd>  PACKAGE_MARIADB_SYM           // Oracle-R
 %token  <kwd>  RAISE_MARIADB_SYM             // PLSQL-R
+%token  <kwd>  RECORD_SYM
 %token  <kwd>  ROWTYPE_MARIADB_SYM           // PLSQL-R
 %token  <kwd>  ROWNUM_SYM                    /* Oracle-R */
 
@@ -1896,8 +1899,12 @@ rule:
 %type <cond_info_item_name> condition_information_item_name;
 %type <cond_info_list> condition_information;
 
-%type <spvar_definition> row_field_name row_field_definition
+%type <spvar_definition> composite_data_field_name composite_data_field_definition
 %type <spvar_definition_list> row_field_definition_list row_type_body
+
+%ifdef ORACLE
+%type <sprec_definition_list> rec_field_definition_list rec_type_body
+%endif
 
 %type <NONE> opt_window_clause window_def_list window_def window_spec
 %type <lex_str_ptr> window_name
@@ -3336,8 +3343,8 @@ optionally_qualified_column_ident:
         ;
 
 
-row_field_definition:
-          row_field_name field_type
+composite_data_field_definition:
+          composite_data_field_name field_type
           {
             Lex->last_field->set_attributes(thd, $2,
                                             COLUMN_DEFINITION_ROUTINE_LOCAL);
@@ -3345,12 +3352,12 @@ row_field_definition:
         ;
 
 row_field_definition_list:
-          row_field_definition
+          composite_data_field_definition 
           {
             if (!($$= Row_definition_list::make(thd->mem_root, $1)))
               MYSQL_YYABORT;
           }
-        | row_field_definition_list ',' row_field_definition
+        | row_field_definition_list ',' composite_data_field_definition
           {
             if (($$= $1)->append_uniq(thd->mem_root, $3))
               MYSQL_YYABORT;
@@ -3360,6 +3367,25 @@ row_field_definition_list:
 row_type_body:
           '(' row_field_definition_list ')' { $$= $2; }
         ;
+
+%ifdef ORACLE
+rec_field_definition_list:
+          composite_data_field_definition
+          {
+            if (!($$= Rec_definition_list::make(thd->mem_root, $1)))
+              MYSQL_YYABORT;
+          }
+        | rec_field_definition_list ',' composite_data_field_definition
+          {
+            if (($$= $1)->append_uniq(thd->mem_root, $3))
+              MYSQL_YYABORT;
+          }
+        ;
+
+rec_type_body:
+          '(' rec_field_definition_list ')' { $$= $2; }
+        ;
+%endif
 
 sp_decl_idents_init_vars:
           sp_decl_idents
@@ -3372,16 +3398,26 @@ sp_decl_variable_list:
           sp_decl_idents_init_vars
           field_type
           {
-            Lex->last_field->set_attributes(thd, $2,
-                                            COLUMN_DEFINITION_ROUTINE_LOCAL);
+            if (Lex->sprec == NULL)
+            {
+              Lex->last_field->set_attributes(thd, $2,
+                                              COLUMN_DEFINITION_ROUTINE_LOCAL);
+            }
           }
           sp_opt_default
           {
-            if (unlikely(Lex->sp_variable_declarations_finalize(thd, $1,
-                                                                &Lex->last_field[0],
-                                                                $4.expr,
-                                                                $4.expr_str)))
-              MYSQL_YYABORT;
+            if (Lex->sprec == NULL)
+            {
+              if (unlikely(Lex->sp_variable_declarations_finalize(thd, $1,
+                                                                  &Lex->last_field[0],
+                                                                  $4.expr,
+                                                                  $4.expr_str)))
+                MYSQL_YYABORT;
+            }
+            else
+            {
+              
+            }
             $$.init_using_vars($1);
           }
         | sp_decl_idents_init_vars
@@ -3407,7 +3443,7 @@ sp_decl_handler:
           {
             if (unlikely(Lex->sp_handler_declaration_finalize(thd, $1)))
               MYSQL_YYABORT;
-            $$.vars= $$.conds= $$.curs= 0;
+            $$.vars= $$.conds= $$.curs= $$.recs= 0;
             $$.hndlrs= 1;
           }
         ;
@@ -6236,7 +6272,8 @@ column_default_expr:
 
 field_type: field_type_all
         {
-          Lex->map_data_type(Lex_ident_sys(), &($$= $1));
+          if(Lex->sprec == NULL)
+            Lex->map_data_type(Lex_ident_sys(), &($$= $1));
         }
         ;
 
@@ -6264,10 +6301,17 @@ field_type_all:
         | field_type_string
         | field_type_lob
         | field_type_misc
-        | udt_name float_options srid_option
+        | udt_name
           {
-            if (Lex->set_field_type_udt(&$$, $1, $2))
-              MYSQL_YYABORT;
+            Lex->sprec = Lex->spcont->find_record(&$1, true);
+          }
+          float_options srid_option
+          {
+            if (Lex->sprec == NULL)
+            {
+              if (Lex->set_field_type_udt(&$$, $1, $3))
+                MYSQL_YYABORT;
+            }
           }
         ;
 
@@ -6497,7 +6541,10 @@ real_type:
 
 srid_option:
           /* empty */
-          { Lex->last_field->set_attr_uint32(0, 0); }
+          {
+            if (Lex->sprec == NULL)
+              Lex->last_field->set_attr_uint32(0, 0);
+          }
         |
           REF_SYSTEM_ID_SYM '=' NUM
           {
@@ -18566,10 +18613,10 @@ ident_for_loop_index:
           ident
         ;
 
-row_field_name:
+composite_data_field_name:
           ident
           {
-            if (!($$= Lex->row_field_name(thd, $1)))
+            if (!($$= Lex->composite_data_field_name(thd, $1)))
               MYSQL_YYABORT;
           }
         ;
@@ -18762,7 +18809,7 @@ sp_decl_body:
                                                         Lex_ident_column($1),
                                                         $4)))
               MYSQL_YYABORT;
-            $$.vars= $$.hndlrs= $$.curs= 0;
+            $$.vars= $$.hndlrs= $$.curs= $$.recs= 0;
             $$.conds= 1;
           }
         | sp_decl_handler
@@ -18778,7 +18825,7 @@ sp_decl_body:
               MYSQL_YYABORT;
             if (unlikely(Lex->sp_declare_cursor(thd, &$1, $6, param_ctx, true)))
               MYSQL_YYABORT;
-            $$.vars= $$.conds= $$.hndlrs= 0;
+            $$.vars= $$.conds= $$.hndlrs= $$.recs= 0;
             $$.curs= 1;
           }
         ;
@@ -18994,10 +19041,10 @@ ident_for_loop_index:
           ident_directly_assignable
         ;
 
-row_field_name:
+composite_data_field_name: 
           ident_directly_assignable
           {
-            if (!($$= Lex->row_field_name(thd, $1)))
+            if (!($$= Lex->composite_data_field_name(thd, $1)))
               MYSQL_YYABORT;
           }
         ;
@@ -19706,7 +19753,7 @@ sp_decl_non_handler:
                                                         Lex_ident_column($1),
                                                         $4)))
               MYSQL_YYABORT;
-            $$.vars= $$.hndlrs= $$.curs= 0;
+            $$.vars= $$.hndlrs= $$.curs= $$.recs= 0;
             $$.conds= 1;
           }
         | ident_directly_assignable EXCEPTION_ORACLE_SYM
@@ -19718,7 +19765,7 @@ sp_decl_non_handler:
                                                         Lex_ident_column($1),
                                                         spcond)))
               MYSQL_YYABORT;
-            $$.vars= $$.hndlrs= $$.curs= 0;
+            $$.vars= $$.hndlrs= $$.curs= $$.recs= 0;
             $$.conds= 1;
           }
         | CURSOR_SYM ident_directly_assignable
@@ -19733,8 +19780,20 @@ sp_decl_non_handler:
               MYSQL_YYABORT;
             if (unlikely(Lex->sp_declare_cursor(thd, &$2, $6, param_ctx, false)))
               MYSQL_YYABORT;
-            $$.vars= $$.conds= $$.hndlrs= 0;
+            $$.vars= $$.conds= $$.hndlrs= $$.recs= 0;
             $$.curs= 1;
+          }
+        | RECORD_SYM ident_directly_assignable IS RECORD_SYM rec_type_body
+          {
+            if (unlikely(Lex->spcont->declare_record(thd,
+                                                        Lex_ident_column($2), $5)))
+              MYSQL_YYABORT;
+
+            if (unlikely(Lex->sphead->composite_datatype_fill_field_definitions(thd, $5)))
+              MYSQL_YYABORT;
+
+            $$.vars= $$.conds= $$.hndlrs= $$.curs= 0;
+            $$.recs= 1;
           }
         ;
 
