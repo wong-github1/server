@@ -561,6 +561,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd> KEYS
 %token  <kwd> KEY_SYM                       /* SQL-2003-N */
 %token  <kwd> KILL_SYM
+%token  <kwd> KSSYMBOL                      // kokseng
 %token  <kwd> LAG_SYM                       /* SQL-2011 */
 %token  <kwd> LEADING                       /* SQL-2003-R */
 %token  <kwd> LEAD_SYM                      /* SQL-2011 */
@@ -730,6 +731,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd>  OTHERS_MARIADB_SYM            // SQL-2011-N, PLSQL-R
 %token  <kwd>  PACKAGE_MARIADB_SYM           // Oracle-R
 %token  <kwd>  RAISE_MARIADB_SYM             // PLSQL-R
+%token  <kwd>  RECORD_SYM                    // kokseng
 %token  <kwd>  ROWTYPE_MARIADB_SYM           // PLSQL-R
 %token  <kwd>  ROWNUM_SYM                    /* Oracle-R */
 
@@ -3408,6 +3410,7 @@ sp_decl_handler:
             if (unlikely(Lex->sp_handler_declaration_finalize(thd, $1)))
               MYSQL_YYABORT;
             $$.vars= $$.conds= $$.curs= 0;
+            $$.recs= 0; // kokseng
             $$.hndlrs= 1;
           }
         ;
@@ -16551,6 +16554,7 @@ reserved_keyword_udt_not_param_type:
         | KEYS
         | KEY_SYM
         | KILL_SYM
+        | KSSYMBOL  /* kokseng */
         | LEADING
         | LEAVE_SYM
         | LEFT
@@ -18763,6 +18767,7 @@ sp_decl_body:
                                                         $4)))
               MYSQL_YYABORT;
             $$.vars= $$.hndlrs= $$.curs= 0;
+            $$.recs= 0; // kokseng
             $$.conds= 1;
           }
         | sp_decl_handler
@@ -18779,6 +18784,7 @@ sp_decl_body:
             if (unlikely(Lex->sp_declare_cursor(thd, &$1, $6, param_ctx, true)))
               MYSQL_YYABORT;
             $$.vars= $$.conds= $$.hndlrs= 0;
+            $$.recs= 0; // kokseng
             $$.curs= 1;
           }
         ;
@@ -19707,6 +19713,7 @@ sp_decl_non_handler:
                                                         $4)))
               MYSQL_YYABORT;
             $$.vars= $$.hndlrs= $$.curs= 0;
+            $$.recs= 0; // kokseng
             $$.conds= 1;
           }
         | ident_directly_assignable EXCEPTION_ORACLE_SYM
@@ -19719,6 +19726,7 @@ sp_decl_non_handler:
                                                         spcond)))
               MYSQL_YYABORT;
             $$.vars= $$.hndlrs= $$.curs= 0;
+            $$.recs= 0; // kokseng
             $$.conds= 1;
           }
         | CURSOR_SYM ident_directly_assignable
@@ -19734,8 +19742,17 @@ sp_decl_non_handler:
             if (unlikely(Lex->sp_declare_cursor(thd, &$2, $6, param_ctx, false)))
               MYSQL_YYABORT;
             $$.vars= $$.conds= $$.hndlrs= 0;
+            
             $$.curs= 1;
           }
+        | RECORD_SYM ident_directly_assignable  // kokseng
+          {
+            if (unlikely(Lex->spcont->declare_record(thd,
+                                                        Lex_ident_column($1))))
+              MYSQL_YYABORT;
+            $$.vars= $$.conds= $$.hndlrs= $$.curs= 0;
+            $$.recs= 1;
+          }  // kokseng
         ;
 
 

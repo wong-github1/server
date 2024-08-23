@@ -98,7 +98,8 @@ sp_pcontext::sp_pcontext()
   m_parent(NULL), m_pboundary(0),
   m_vars(PSI_INSTRUMENT_MEM), m_case_expr_ids(PSI_INSTRUMENT_MEM),
   m_conditions(PSI_INSTRUMENT_MEM), m_cursors(PSI_INSTRUMENT_MEM),
-  m_handlers(PSI_INSTRUMENT_MEM), m_children(PSI_INSTRUMENT_MEM),
+  // m_handlers(PSI_INSTRUMENT_MEM), m_children(PSI_INSTRUMENT_MEM),   // kokseng org
+  m_handlers(PSI_INSTRUMENT_MEM), m_records(PSI_INSTRUMENT_MEM), m_children(PSI_INSTRUMENT_MEM),   // kokseng
   m_scope(REGULAR_SCOPE)
 {
   init(0, 0, 0);
@@ -111,7 +112,8 @@ sp_pcontext::sp_pcontext(sp_pcontext *prev, sp_pcontext::enum_scope scope)
   m_parent(prev), m_pboundary(0),
   m_vars(PSI_INSTRUMENT_MEM), m_case_expr_ids(PSI_INSTRUMENT_MEM),
   m_conditions(PSI_INSTRUMENT_MEM), m_cursors(PSI_INSTRUMENT_MEM),
-  m_handlers(PSI_INSTRUMENT_MEM), m_children(PSI_INSTRUMENT_MEM),
+  // m_handlers(PSI_INSTRUMENT_MEM), m_children(PSI_INSTRUMENT_MEM), // kokseng org
+  m_handlers(PSI_INSTRUMENT_MEM), m_records(PSI_INSTRUMENT_MEM), m_children(PSI_INSTRUMENT_MEM), // kokseng
   m_scope(scope)
 {
   init(prev->m_var_offset + prev->m_max_var_index,
@@ -412,6 +414,38 @@ sp_condition_value *sp_pcontext::find_condition(const LEX_CSTRING *name,
     m_parent->find_condition(name, false) :
     NULL;
 }
+
+
+bool sp_pcontext::add_record(THD *thd,
+                                const Lex_ident_column &name)     // kokseng
+{ // kokseng
+  sp_record *p= new (thd->mem_root) sp_record(name);
+
+  if (p == NULL)
+    return true;
+
+  return m_records.append(p);
+} // kokseng
+
+
+sp_record *sp_pcontext::find_record(const LEX_CSTRING *name, // kokseng
+                                                bool current_scope_only) const
+{ // kokseng
+  size_t i= m_records.elements();
+
+  while (i--)
+  {
+    sp_record *p= m_records.at(i);
+
+    if (p->eq_name(name))
+    {
+      return p;
+    }
+  }
+
+  return NULL;
+} // kokseng
+
 
 sp_condition_value *
 sp_pcontext::find_declared_or_predefined_condition(THD *thd,
