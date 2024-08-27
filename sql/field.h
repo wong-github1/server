@@ -5620,6 +5620,36 @@ public:
   bool resolve_type_refs(THD *);
 };
 
+
+class Rec_definition_list: public List<class Spvar_definition> // kokseng
+{ // kokseng
+public:
+  inline bool eq_name(const Spvar_definition *def, const LEX_CSTRING *name) const;
+
+  Spvar_definition *find_record_field_by_name(const LEX_CSTRING *name, uint *offset) const
+  {
+    // Cast-off the "const" qualifier
+    List_iterator<Spvar_definition> it(*((List<Spvar_definition>*)this));
+    Spvar_definition *def;
+    for (*offset= 0; (def= it++); (*offset)++)
+    {
+      if (eq_name(def, name))
+        return def;
+    }
+    return 0;
+  }
+
+  static Rec_definition_list *make(MEM_ROOT *mem_root, Spvar_definition *var)
+  {
+    Rec_definition_list *list;
+    if (!(list= new (mem_root) Rec_definition_list()))
+      return NULL;
+    return list->push_back(var, mem_root) ? NULL : list;
+  }
+
+  bool append_uniq(MEM_ROOT *thd, Spvar_definition *var);
+}; // kokseng
+
 /**
   This class is used during a stored routine or a trigger execution,
   at sp_rcontext::create() time.
@@ -5744,6 +5774,13 @@ inline bool Row_definition_list::eq_name(const Spvar_definition *def,
 {
   return def->field_name.streq(*name);
 }
+
+
+inline bool Rec_definition_list::eq_name(const Spvar_definition *def,  // kokseng
+                                         const LEX_CSTRING *name) const
+{  // kokseng
+  return def->field_name.streq(*name);
+}  // kokseng
 
 
 class Create_field :public Column_definition

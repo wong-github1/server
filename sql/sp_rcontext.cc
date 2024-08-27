@@ -167,6 +167,19 @@ bool Row_definition_list::
 }
 
 
+bool Rec_definition_list::append_uniq(MEM_ROOT *mem_root, Spvar_definition *var) // kokseng
+{ // kokseng
+  DBUG_ASSERT(elements);
+  uint unused;
+  if (unlikely(find_record_field_by_name(&var->field_name, &unused)))
+  {
+    my_error(ER_DUP_FIELDNAME, MYF(0), var->field_name.str);
+    return true;
+  }
+  return push_back(var, mem_root);
+} // kokseng
+
+
 bool sp_rcontext::alloc_arrays(THD *thd)
 {
   {

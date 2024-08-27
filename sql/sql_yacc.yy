@@ -246,6 +246,7 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
   Create_field *create_field;
   Spvar_definition *spvar_definition;
   Row_definition_list *spvar_definition_list;
+  Rec_definition_list *sprec_definition_list; // kokseng
   const Type_handler *type_handler;
   const class Sp_handler *sp_handler;
   CHARSET_INFO *charset;
@@ -1901,6 +1902,12 @@ rule:
 %type <spvar_definition> row_field_name row_field_definition
 %type <spvar_definition_list> row_field_definition_list row_type_body
 
+// kokseng
+%ifdef ORACLE
+%type <spvar_definition> rec_field_name rec_field_definition  // kokseng
+%type <sprec_definition_list> rec_field_definition_list rec_type_body // kokseng
+%endif
+
 %type <NONE> opt_window_clause window_def_list window_def window_spec
 %type <lex_str_ptr> window_name
 %type <NONE> opt_window_ref opt_window_frame_clause
@@ -3362,6 +3369,42 @@ row_field_definition_list:
 row_type_body:
           '(' row_field_definition_list ')' { $$= $2; }
         ;
+
+// kokseng
+%ifdef ORACLE
+rec_field_name: // kokseng
+          ident
+          {
+            if (!($$= Lex->rec_field_name(thd, $1)))
+              MYSQL_YYABORT;
+          }
+        ; // kokseng
+
+rec_field_definition: // kokseng
+          rec_field_name field_type
+          {
+            Lex->last_field->set_attributes(thd, $2,
+                                            COLUMN_DEFINITION_ROUTINE_LOCAL);
+          }
+        ; // kokseng
+
+rec_field_definition_list:  // kokseng
+          rec_field_definition
+          {
+            if (!($$= Rec_definition_list::make(thd->mem_root, $1)))
+              MYSQL_YYABORT;
+          }
+        | rec_field_definition_list ',' rec_field_definition
+          {
+            if (($$= $1)->append_uniq(thd->mem_root, $3))
+              MYSQL_YYABORT;
+          }
+        ;  // kokseng
+
+rec_type_body:  // kokseng
+          '(' rec_field_definition_list ')' { $$= $2; }
+        ; // kokseng
+%endif
 
 sp_decl_idents_init_vars:
           sp_decl_idents
@@ -18578,6 +18621,17 @@ row_field_name:
           }
         ;
 
+// kokseng
+//%ifdef ORACLE
+//rec_field_name: // kokseng
+//          ident
+//          {
+//            if (!($$= Lex->rec_field_name(thd, $1)))
+//              MYSQL_YYABORT;
+//          }
+//        ; // kokseng
+//%endif
+
 while_body:
           expr_lex DO_SYM
           {
@@ -19745,7 +19799,7 @@ sp_decl_non_handler:
             
             $$.curs= 1;
           }
-        | RECORD_SYM ident_directly_assignable  // kokseng
+        | RECORD_SYM ident_directly_assignable IS RECORD_SYM rec_type_body  // kokseng
           {
             if (unlikely(Lex->spcont->declare_record(thd,
                                                         Lex_ident_column($1))))

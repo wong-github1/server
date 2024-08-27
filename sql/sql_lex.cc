@@ -11134,7 +11134,7 @@ void mark_or_conds_to_avoid_pushdown(Item *cond)
        In this case condition is transformed and pushed into attach_to_conds
        list.
     2. Part of some other condition c1 that can't be entirely pushed
-       (if с1 isn't marked with any flag).
+       (if ??1 isn't marked with any flag).
 
        For example:
 
@@ -11956,6 +11956,22 @@ Spvar_definition *LEX::row_field_name(THD *thd, const Lex_ident_sys_st &name)
   init_last_field(res, &name);
   return res;
 }
+
+
+Spvar_definition *LEX::rec_field_name(THD *thd, const Lex_ident_sys_st &name) // kokseng
+{ // kokseng
+  Spvar_definition *res;
+  if (unlikely(check_string_char_length(&name, 0, NAME_CHAR_LEN,
+                                        system_charset_info, 1)))
+  {
+    my_error(ER_TOO_LONG_IDENT, MYF(0), name.str);
+    return NULL;
+  }
+  if (unlikely(!(res= new (thd->mem_root) Spvar_definition())))
+    return NULL;
+  init_last_field(res, &name);
+  return res;
+} // kokseng
 
 
 Item *

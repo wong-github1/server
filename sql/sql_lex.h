@@ -4947,6 +4947,8 @@ public:
 
   Spvar_definition *row_field_name(THD *thd, const Lex_ident_sys_st &name);
 
+  Spvar_definition *rec_field_name(THD *thd, const Lex_ident_sys_st &name); // kokseng
+
   bool set_field_type_udt(Lex_field_type_st *type,
                           const LEX_CSTRING &name,
                           const Lex_length_and_dec_st &attr);
