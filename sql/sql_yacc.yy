@@ -3373,7 +3373,7 @@ row_type_body:
 // kokseng
 %ifdef ORACLE
 rec_field_name: // kokseng
-          ident
+          ident_directly_assignable
           {
             if (!($$= Lex->rec_field_name(thd, $1)))
               MYSQL_YYABORT;
@@ -19796,14 +19796,18 @@ sp_decl_non_handler:
             if (unlikely(Lex->sp_declare_cursor(thd, &$2, $6, param_ctx, false)))
               MYSQL_YYABORT;
             $$.vars= $$.conds= $$.hndlrs= 0;
-            
+            $$.recs= 0; // kokseng
             $$.curs= 1;
           }
         | RECORD_SYM ident_directly_assignable IS RECORD_SYM rec_type_body  // kokseng
           {
             if (unlikely(Lex->spcont->declare_record(thd,
-                                                        Lex_ident_column($1))))
+                                                        Lex_ident_column($2))))
               MYSQL_YYABORT;
+
+            if (unlikely(Lex->sphead->rec_fill_field_definitions(thd, $5)))
+              MYSQL_YYABORT;
+
             $$.vars= $$.conds= $$.hndlrs= $$.curs= 0;
             $$.recs= 1;
           }  // kokseng
