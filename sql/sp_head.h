@@ -740,14 +740,16 @@ public:
     return h->Column_definition_fix_attributes(field_def) ||
            field_def->sp_prepare_create_field(thd, mem_root);
   }
-  bool row_fill_field_definitions(THD *thd, Row_definition_list *row)
+
+  template<typename RowOrRec>
+  bool composite_datatype_fill_field_definitions(THD *thd, RowOrRec *type)
   {
     /*
       Prepare all row fields. This will (among other things)
       - convert VARCHAR lengths from character length to octet length
       - calculate interval lengths for SET and ENUM
     */
-    List_iterator<Spvar_definition> it(*row);
+    List_iterator<Spvar_definition> it(*type);
     for (Spvar_definition *def= it++; def; def= it++)
     {
       if (fill_spvar_definition(thd, def))
@@ -755,22 +757,6 @@ public:
     }
     return false;
   }
-
-  bool rec_fill_field_definitions(THD *thd, Rec_definition_list *rec) // kokseng
-  { // kokseng
-    /*
-      Prepare all rec fields. This will (among other things)
-      - convert VARCHAR lengths from character length to octet length
-      - calculate interval lengths for SET and ENUM
-    */
-    List_iterator<Spvar_definition> it(*rec);
-    for (Spvar_definition *def= it++; def; def= it++)
-    {
-      if (fill_spvar_definition(thd, def))
-        return true;
-    }
-    return false;
-  } // kokseng
 
   /**
     Check and prepare a Column_definition for a variable or a parameter.

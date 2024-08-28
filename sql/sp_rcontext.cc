@@ -121,7 +121,8 @@ sp_rcontext *sp_rcontext::create(THD *thd,
 }
 
 
-bool Row_definition_list::append_uniq(MEM_ROOT *mem_root, Spvar_definition *var)
+template <class RowOrRec>
+bool Composite_data_field_definition_list<RowOrRec>::append_uniq(MEM_ROOT *mem_root, Spvar_definition *var)
 {
   DBUG_ASSERT(elements);
   uint unused;
@@ -134,7 +135,8 @@ bool Row_definition_list::append_uniq(MEM_ROOT *mem_root, Spvar_definition *var)
 }
 
 
-bool Row_definition_list::
+template <class RowOrRec>
+bool Composite_data_field_definition_list<RowOrRec>::
        adjust_formal_params_to_actual_params(THD *thd, List<Item> *args)
 {
   List_iterator<Spvar_definition> it(*this);
@@ -151,7 +153,8 @@ bool Row_definition_list::
 }
 
 
-bool Row_definition_list::
+template <class RowOrRec>
+bool Composite_data_field_definition_list<RowOrRec>::
        adjust_formal_params_to_actual_params(THD *thd,
                                              Item **args, uint arg_count)
 {
@@ -165,19 +168,6 @@ bool Row_definition_list::
   }
   return false;
 }
-
-
-bool Rec_definition_list::append_uniq(MEM_ROOT *mem_root, Spvar_definition *var) // kokseng
-{ // kokseng
-  DBUG_ASSERT(elements);
-  uint unused;
-  if (unlikely(find_record_field_by_name(&var->field_name, &unused)))
-  {
-    my_error(ER_DUP_FIELDNAME, MYF(0), var->field_name.str);
-    return true;
-  }
-  return push_back(var, mem_root);
-} // kokseng
 
 
 bool sp_rcontext::alloc_arrays(THD *thd)
@@ -353,7 +343,8 @@ bool Table_ident::resolve_table_rowtype_ref(THD *thd,
 }
 
 
-bool Row_definition_list::resolve_type_refs(THD *thd)
+template <class RowOrRec>
+bool Composite_data_field_definition_list<RowOrRec>::resolve_type_refs(THD *thd)
 {
   List_iterator<Spvar_definition> it(*this);
   Spvar_definition *def;
@@ -920,3 +911,6 @@ int sp_cursor::Select_fetch_into_spvars::send_data(List<Item> &items)
     thd->spcont->set_variable_row(thd, spvar_list->head()->offset, items) :
     send_data_to_variable_list(*spvar_list, items);
 }
+
+template class Composite_data_field_definition_list<Row_definition_list>;
+template class Composite_data_field_definition_list<Rec_definition_list>;

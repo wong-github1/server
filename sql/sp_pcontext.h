@@ -325,12 +325,12 @@ public:
 };
 
 
-///////////////////////////////////////////////////////////////////////////   // kokseng
+///////////////////////////////////////////////////////////////////////////
 
 /// This class represents 'DECLARE RECORD' statement.
 
-class sp_record : public Sql_alloc // kokseng
-{ // kokseng
+class sp_record : public Sql_alloc
+{
 public:
   /// Name of the record.
   Lex_ident_column name;
@@ -344,7 +344,7 @@ public:
   {
     return name.streq(*str);
   }
-}; // kokseng
+};
 
 
 ///////////////////////////////////////////////////////////////////////////
@@ -723,24 +723,24 @@ public:
     return m_for_loop;
   }
 
-  /////////////////////////////////////////////////////////////////////////   // kokseng
+  /////////////////////////////////////////////////////////////////////////
   // Record.
   /////////////////////////////////////////////////////////////////////////
 
-  bool add_record(THD *thd, const Lex_ident_column &name);         // kokseng
+  bool add_record(THD *thd, const Lex_ident_column &name);
 
-  sp_record *find_record(const LEX_CSTRING *name,                     // kokseng
+  sp_record *find_record(const LEX_CSTRING *name,
                                      bool current_scope_only) const;
 
-  bool declare_record(THD *thd, const Lex_ident_column &name)  // kokseng
-  { // kokseng
+  bool declare_record(THD *thd, const Lex_ident_column &name)
+  {
     if (find_record(&name, true))
     {
       // my_error(ER_SP_DUP_COND, MYF(0), name.str);  // kokseng not yet
       return true;
     }
     return add_record(thd, name);
-  } // kokseng
+  }
 
 private:
   /// Constructor for a tree node.
@@ -806,8 +806,8 @@ private:
   /// Stack of SQL-handlers.
   Dynamic_array<sp_handler *> m_handlers;
 
-  /// Stack of record.                  // kokseng
-  Dynamic_array<sp_record *> m_records;  // kokseng
+  /// Stack of record.
+  Dynamic_array<sp_record *> m_records;
 
   /*
    In the below example the label <<lab>> has two meanings:
