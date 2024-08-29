@@ -3916,6 +3916,7 @@ mysql_execute_command(THD *thd, bool is_called_from_prepared_stmt)
   case SQLCOM_SHOW_COLLATIONS:
   case SQLCOM_SHOW_STORAGE_ENGINES:
   case SQLCOM_SHOW_PROFILE:
+  case SQLCOM_SHOW_SLAVE_STAT:
   case SQLCOM_SELECT:
   {
 #ifdef WITH_WSREP
@@ -4569,7 +4570,14 @@ mysql_execute_command(THD *thd, bool is_called_from_prepared_stmt)
 
         // For !InnoDB we start TOI if it is not yet started and hope for the best
         if (!is_innodb && !wsrep_toi)
-          WSREP_TO_ISOLATION_BEGIN(first_table->db.str, first_table->table_name.str, NULL);
+        {
+          const legacy_db_type db_type= first_table->table->file->partition_ht()->db_type;
+
+          /* Currently we support TOI for MyISAM only. */
+          if (db_type == DB_TYPE_MYISAM &&
+              wsrep_check_mode(WSREP_MODE_REPLICATE_MYISAM))
+            WSREP_TO_ISOLATION_BEGIN(first_table->db.str, first_table->table_name.str, NULL);
+        }
       }
 #endif /* WITH_WSREP */
       /*
@@ -5829,7 +5837,6 @@ mysql_execute_command(THD *thd, bool is_called_from_prepared_stmt)
       DBUG_ASSERT(first_table == all_tables && first_table != 0);
     /* fall through */
   case SQLCOM_ALTER_SEQUENCE:
-  case SQLCOM_SHOW_SLAVE_STAT:
   case SQLCOM_SIGNAL:
   case SQLCOM_RESIGNAL:
   case SQLCOM_GET_DIAGNOSTICS:
@@ -7287,6 +7294,7 @@ __attribute__((optimize("-O0")))
 #endif
 check_stack_overrun(THD *thd, long margin, uchar *buf __attribute__((unused)))
 {
+#ifndef __SANITIZE_ADDRESS__
   long stack_used;
   DBUG_ASSERT(thd == current_thd);
   if ((stack_used= available_stack_size(thd->thread_stack, &stack_used)) >=
@@ -7309,6 +7317,7 @@ check_stack_overrun(THD *thd, long margin, uchar *buf __attribute__((unused)))
 #ifndef DBUG_OFF
   max_stack_used= MY_MAX(max_stack_used, stack_used);
 #endif
+#endif /* __SANITIZE_ADDRESS__ */
   return 0;
 }
 
@@ -8094,7 +8103,7 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   }
 
   bool has_alias_ptr= alias != nullptr;
-  void *memregion= thd->calloc(sizeof(TABLE_LIST));
+  void *memregion= thd->alloc(sizeof(TABLE_LIST));
   TABLE_LIST *ptr= new (memregion) TABLE_LIST(thd, db, fqtn, alias_str,
                                               has_alias_ptr, table, lock_type,
                                               mdl_type, table_options,

@@ -465,7 +465,7 @@ COMMAND_LINE_ARGUMENT	REQUIRED
 VARIABLE_NAME	BINLOG_OPTIMIZE_THREAD_SCHEDULING
 VARIABLE_SCOPE	GLOBAL
 VARIABLE_TYPE	BOOLEAN
-VARIABLE_COMMENT	Run fast part of group commit in a single thread, to optimize kernel thread scheduling. On by default. Disable to run each transaction in group commit in its own thread, which can be slower at very high concurrency. This option is mostly for testing one algorithm versus the other, and it should not normally be necessary to change it
+VARIABLE_COMMENT	Run fast part of group commit in a single thread, to optimize kernel thread scheduling. On by default. Disable to run each transaction in group commit in its own thread, which can be slower at very high concurrency. This option is mostly for testing one algorithm versus the other, and it should not normally be necessary to change it. This variable is deprecated and will be removed in a future release
 NUMERIC_MIN_VALUE	NULL
 NUMERIC_MAX_VALUE	NULL
 NUMERIC_BLOCK_SIZE	NULL
@@ -3455,7 +3455,7 @@ COMMAND_LINE_ARGUMENT	OPTIONAL
 VARIABLE_NAME	SLAVE_CONNECTIONS_NEEDED_FOR_PURGE
 VARIABLE_SCOPE	GLOBAL
 VARIABLE_TYPE	INT UNSIGNED
-VARIABLE_COMMENT	Minimum number of connected slaves required for automatic binary log purge with max_binlog_total_size, binlog_expire_logs_seconds or binlog_expire_logs_days
+VARIABLE_COMMENT	Minimum number of connected slaves required for automatic binary log purge with max_binlog_total_size, binlog_expire_logs_seconds or binlog_expire_logs_days. Default is 0 when Galera is enabled and 1 otherwise
 NUMERIC_MIN_VALUE	0
 NUMERIC_MAX_VALUE	4294967295
 NUMERIC_BLOCK_SIZE	1

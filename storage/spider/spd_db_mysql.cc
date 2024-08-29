@@ -5232,7 +5232,23 @@ int spider_db_mbase_util::append_time_zone(
   to the value of `"$spider_unique_id$spider_table_path-"`, where
   $target_table_path is the path to the data node table ("to"), and
   $spider_table_path the path to the spider table ("from")
-*/
+
+
+  iterate over loop_check_queue and build queries for loop check
+
+  The query is in the form of
+
+  set @`spider_lc_.<to_table>` =
+  '-<mac1>-<pid1>-<from_table1>--<mac2>-<pid2>-<from_table2>-...'
+
+  where from_table1, from_table2 etc. are spider tables whose direct
+  or indirect remote data nodes contain to_table.
+
+  e.g. if t0->t1->t2, then the query could be:
+
+  set @`spider_lc_./test/t2` =
+  '-234567890abc-def012-./test/t1--1234567890ab-cdef01-./test/t0-'
+  */
 int spider_db_mbase_util::append_loop_check(
   spider_string *str,
   SPIDER_CONN *conn
@@ -13294,8 +13310,8 @@ int spider_mbase_handler::show_table_status(
         my_printf_error(
           ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM,
           ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR, MYF(0),
-          mysql_share->db_names_str[spider->conn_link_idx[link_idx]].ptr(),
-          mysql_share->table_names_str[spider->conn_link_idx[link_idx]].ptr());
+          mysql_share->db_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe(),
+          mysql_share->table_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe());
         DBUG_RETURN(ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM);
       }
     } else                      /* get from information schema */
@@ -13321,15 +13337,15 @@ int spider_mbase_handler::show_table_status(
       my_printf_error(
         ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM,
         ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR, MYF(0),
-        mysql_share->db_names_str[spider->conn_link_idx[link_idx]].ptr(),
-        mysql_share->table_names_str[spider->conn_link_idx[link_idx]].ptr());
+        mysql_share->db_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe(),
+        mysql_share->table_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe());
       break;
     case ER_SPIDER_INVALID_REMOTE_TABLE_INFO_NUM:
       my_printf_error(
         ER_SPIDER_INVALID_REMOTE_TABLE_INFO_NUM,
         ER_SPIDER_INVALID_REMOTE_TABLE_INFO_STR, MYF(0),
-        mysql_share->db_names_str[spider->conn_link_idx[link_idx]].ptr(),
-        mysql_share->table_names_str[spider->conn_link_idx[link_idx]].ptr());
+        mysql_share->db_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe(),
+        mysql_share->table_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe());
       break;
     default:
       break;
@@ -13345,8 +13361,8 @@ int spider_mbase_handler::show_table_status(
       my_printf_error(
         ER_SPIDER_TABLE_OPEN_LOCK_WAIT_TIMEOUT_NUM,
         ER_SPIDER_TABLE_OPEN_LOCK_WAIT_TIMEOUT_STR, MYF(0),
-        mysql_share->db_names_str[spider->conn_link_idx[link_idx]].ptr(),
-        mysql_share->table_names_str[spider->conn_link_idx[link_idx]].ptr());
+        mysql_share->db_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe(),
+        mysql_share->table_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe());
     }
     DBUG_RETURN(error_num);
   }
@@ -13464,15 +13480,15 @@ int spider_mbase_handler::show_index(
     my_printf_error(
       ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM,
       ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR, MYF(0),
-      mysql_share->db_names_str[spider->conn_link_idx[link_idx]].ptr(),
-      mysql_share->table_names_str[spider->conn_link_idx[link_idx]].ptr());
+      mysql_share->db_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe(),
+      mysql_share->table_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe());
     break;
   case ER_SPIDER_INVALID_REMOTE_TABLE_INFO_NUM:
     my_printf_error(
       ER_SPIDER_INVALID_REMOTE_TABLE_INFO_NUM,
       ER_SPIDER_INVALID_REMOTE_TABLE_INFO_STR, MYF(0),
-      mysql_share->db_names_str[spider->conn_link_idx[link_idx]].ptr(),
-      mysql_share->table_names_str[spider->conn_link_idx[link_idx]].ptr());
+      mysql_share->db_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe(),
+      mysql_share->table_names_str[spider->conn_link_idx[link_idx]].c_ptr_safe());
     break;
   default:
     break;

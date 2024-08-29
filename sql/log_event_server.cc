@@ -1328,8 +1328,6 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
 {
   /* status_vars_len is set just before writing the event */
 
-  time_t end_time;
-
 #ifdef WITH_WSREP
   /*
     If Query_log_event will contain non trans keyword (not BEGIN, COMMIT,
@@ -1338,7 +1336,7 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
     is created we create tables with thd->variables.wsrep_on=false
     to avoid replicating wsrep_schema tables to other nodes.
    */
-  if (WSREP_ON && !is_trans_keyword())
+  if (WSREP_ON && !is_trans_keyword(false))
   {
     thd->wsrep_PA_safe= false;
   }
@@ -1348,8 +1346,13 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
   memset(&host, 0, sizeof(host));
   error_code= errcode;
 
-  end_time= my_time(0);
-  exec_time = (ulong) (end_time  - thd_arg->start_time);
+  /*
+    For slave threads, remember the original master exec time.
+    This is needed to be able to calculate the master commit time.
+  */
+  exec_time= ((thd->rgi_slave) ? thd->rgi_slave->orig_exec_time
+                               : (my_time(0) - thd_arg->start_time));
+
   /**
     @todo this means that if we have no catalog, then it is replicated
     as an existing catalog of length zero. is that safe? /sven
@@ -1839,7 +1842,11 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
             ::do_apply_event(), then the companion SET also have so
             we don't need to reset_one_shot_variables().
   */
-  if (is_trans_keyword() || rpl_filter->db_ok(thd->db.str))
+  if (rpl_filter->is_db_empty() ||
+      is_trans_keyword(
+          (rgi->gtid_ev_flags2 & (Gtid_log_event::FL_PREPARED_XA |
+                                  Gtid_log_event::FL_COMPLETED_XA))) ||
+      rpl_filter->db_ok(thd->db.str))
   {
     bool is_rb_alter= gtid_flags_extra & Gtid_log_event::FL_ROLLBACK_ALTER_E1;
 
@@ -2198,6 +2205,16 @@ compare_errors:
       if (actual_error == ER_QUERY_INTERRUPTED ||
           actual_error == ER_CONNECTION_KILLED)
         thd->reset_killed();
+    }
+    else if (actual_error == ER_XAER_NOTA && !rpl_filter->db_ok(get_db()))
+    {
+      /*
+        If there is an XA query whos XID cannot be found, if the replication
+        filter is active and filters the target database, assume that the XID
+        cache has been cleared (e.g. by server restart) since it was prepared,
+        so we can just ignore this event.
+      */
+      thd->clear_error(1);
     }
     /*
       Other cases: mostly we expected no error and get one.
@@ -3687,6 +3704,15 @@ int Xid_apply_log_event::do_apply_event(rpl_group_info *rgi)
 
   general_log_print(thd, COM_QUERY, get_query());
   thd->variables.option_bits&= ~OPTION_GTID_BEGIN;
+  /*
+    Use the time from the current Xid_log_event for the generated
+    Xid_log_event in binlog_commit_flush_xid_caches().
+    This ensures that the time for Xid_log_events does not change
+    and allows slaves to give a consistent value for
+    Slave_last_event_time.
+  */
+  thd->start_time= when;
+
   res= do_commit();
   if (!res && rgi->gtid_pending)
   {

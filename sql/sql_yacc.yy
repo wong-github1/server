@@ -12495,7 +12495,7 @@ opt_order_clause:
 order_clause:
           ORDER_SYM BY
           {
-            thd->where= "ORDER clause";
+            thd->where= THD_WHERE::ORDER_CLAUSE;
           }
           order_list
           {
@@ -13760,10 +13760,10 @@ delete_part2:
         ;
 
 delete_single_table:
-          FROM table_ident opt_use_partition
+          FROM table_ident opt_table_alias_clause opt_use_partition
           {
             if (unlikely(!Select->
-                         add_table_to_list(thd, $2, NULL, TL_OPTION_UPDATING,
+                         add_table_to_list(thd, $2, $3, TL_OPTION_UPDATING,
                                            YYPS->m_lock_type,
                                            YYPS->m_mdl_type,
                                            NULL,
@@ -13776,11 +13776,11 @@ delete_single_table:
             Lex->query_tables= 0;
             Lex->query_tables_last= &Lex->query_tables;
             if (unlikely(!Select->
-                         add_table_to_list(thd, $2, NULL, TL_OPTION_UPDATING,
+                         add_table_to_list(thd, $2, $3, TL_OPTION_UPDATING,
                                            YYPS->m_lock_type,
                                            YYPS->m_mdl_type,
                                            NULL,
-                                           $3)))
+                                           $4)))
               MYSQL_YYABORT;
             Lex->auxiliary_table_list.first->correspondent_table=
               Lex->query_tables;
@@ -14251,17 +14251,23 @@ show_param:
           }
         | ALL SLAVES STATUS_SYM
           {
-            if (!(Lex->m_sql_cmd= new (thd->mem_root)
-                  Sql_cmd_show_slave_status(true)))
+            LEX *lex= Lex;
+            lex->sql_command= SQLCOM_SHOW_SLAVE_STAT;
+            lex->mi.show_all_slaves= 1;
+#ifdef HAVE_REPLICATION
+            if (prepare_schema_table(thd, lex, 0, SCH_SLAVE_STATUS))
               MYSQL_YYABORT;
-            Lex->sql_command = SQLCOM_SHOW_SLAVE_STAT;
+#endif
           }
         | SLAVE optional_connection_name STATUS_SYM optional_for_channel
           {
-            if (!(Lex->m_sql_cmd= new (thd->mem_root)
-                  Sql_cmd_show_slave_status()))
+            LEX *lex= Lex;
+            lex->sql_command= SQLCOM_SHOW_SLAVE_STAT;
+            lex->mi.show_all_slaves= 0;
+#ifdef HAVE_REPLICATION
+            if (prepare_schema_table(thd, lex, 0, SCH_SLAVE_STATUS))
               MYSQL_YYABORT;
-            Lex->sql_command = SQLCOM_SHOW_SLAVE_STAT;
+#endif
           }
         | CREATE PROCEDURE_SYM sp_name
           {

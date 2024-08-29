@@ -317,7 +317,9 @@ Storage_engine_name::resolve_storage_engine_with_error(THD *thd,
   }
 
   *ha= NULL;
-  if (thd->variables.sql_mode & MODE_NO_ENGINE_SUBSTITUTION)
+  if ((thd_sql_command(thd) != SQLCOM_CREATE_TABLE &&
+       thd_sql_command(thd) != SQLCOM_ALTER_TABLE) ||
+      thd->variables.sql_mode & MODE_NO_ENGINE_SUBSTITUTION)
   {
     my_error(ER_UNKNOWN_STORAGE_ENGINE, MYF(0), m_storage_engine_name.str);
     return true;
@@ -814,7 +816,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
   update_discovery_counters(hton, 1);
 
   if (ddl_recovery_done && hton->signal_ddl_recovery_done)
-    hton->signal_ddl_recovery_done(hton);
+    ret= hton->signal_ddl_recovery_done(hton);
 
   DBUG_RETURN(ret);
 
@@ -1556,6 +1558,22 @@ int ha_prepare(THD *thd)
       ha_rollback_trans(thd, all);
       error=1;
     }
+  }
+  else if (thd->rgi_slave)
+  {
+    /*
+      Slave threads will always process XA COMMITs in the binlog handler (see
+      MDEV-25616 and MDEV-30423), so if this is a slave thread preparing a
+      transaction which proved empty during replication (e.g. because of
+      replication filters) then mark it as XA_ROLLBACK_ONLY so the follow up
+      XA COMMIT will know to roll it back, rather than try to commit and binlog
+      a standalone XA COMMIT (without its preceding XA START - XA PREPARE).
+
+      If the xid_cache is cleared before the completion event comes, before
+      issuing ER_XAER_NOTA, first check if the event targets an ignored
+      database, and ignore the error if so.
+    */
+    thd->transaction->xid_state.set_rollback_only();
   }
 
   DBUG_RETURN(error);
@@ -6088,6 +6106,8 @@ void handler::update_global_table_stats()
   table_stats->rows_stats.deleted+=       rows_stats.deleted;
   table_stats->rows_stats.key_read_hit+=  rows_stats.key_read_hit;
   table_stats->rows_stats.key_read_miss+= rows_stats.key_read_miss;
+  table_stats->rows_stats.pages_accessed+= handler_stats->pages_accessed;
+  table_stats->rows_stats.pages_read_count+= handler_stats->pages_read_count;
   changed= rows_stats.updated + rows_stats.inserted + rows_stats.deleted;
   table_stats->rows_changed_x_indexes+= (changed *
                                          (table->s->keys ? table->s->keys :
