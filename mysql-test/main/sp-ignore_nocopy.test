@@ -1,0 +1,52 @@
+--echo # 
+--echo # MDEV-34316 sql_mode=ORACLE: Ignore the NOCOPY keyword in stored routine parameters
+--echo # 
+
+SET sql_mode=ORACLE;
+
+--echo # 
+--echo # Test with function
+--echo # 
+
+DELIMITER $$;
+
+CREATE OR REPLACE FUNCTION example_func(
+  p_in IN VARCHAR(255),
+  p_out1 OUT INT,
+  p_out2 OUT NOCOPY INT,
+  p_in_out1 IN OUT VARCHAR(255),
+  p_in_out2 IN OUT NOCOPY VARCHAR(255),
+  p_in_out3 INOUT NUMBER,
+  p_in_out4 INOUT NOCOPY NUMBER) RETURN NUMBER AS
+BEGIN
+  RETURN 0;
+END;
+
+$$
+
+DELIMITER ;$$
+
+DROP FUNCTION example_func;
+
+--echo # 
+--echo # Test with procedure
+--echo # 
+
+DELIMITER $$;
+
+CREATE OR REPLACE PROCEDURE example_proc(
+  p_in IN VARCHAR(255),
+  p_out1 OUT INT,
+  p_out2 OUT NOCOPY INT,
+  p_in_out1 IN OUT VARCHAR(255),
+  p_in_out2 IN OUT NOCOPY VARCHAR(255),
+  p_in_out3 INOUT NUMBER,
+  p_in_out4 INOUT NOCOPY NUMBER) AS
+BEGIN
+END;
+
+$$
+
+DELIMITER ;$$
+
+DROP PROCEDURE example_proc;

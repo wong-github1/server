@@ -727,6 +727,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd>  ELSIF_MARIADB_SYM             // PLSQL-R
 %token  <kwd>  EXCEPTION_ORACLE_SYM          // SQL-2003-N, PLSQL-R
 %token  <kwd>  GOTO_MARIADB_SYM              // Oracle-R
+%token  <kwd>  NOCOPY_SYM
 %token  <kwd>  OTHERS_MARIADB_SYM            // SQL-2011-N, PLSQL-R
 %token  <kwd>  PACKAGE_MARIADB_SYM           // Oracle-R
 %token  <kwd>  RAISE_MARIADB_SYM             // PLSQL-R
@@ -3282,9 +3283,14 @@ sp_pdparams:
         ;
 
 sp_parameter_type:
-          IN_SYM      { $$= sp_variable::MODE_IN; }
-        | OUT_SYM     { $$= sp_variable::MODE_OUT; }
-        | INOUT_SYM   { $$= sp_variable::MODE_INOUT; }
+          IN_SYM                   { $$= sp_variable::MODE_IN; }
+%ifdef MARIADB
+        | OUT_SYM                  { $$= sp_variable::MODE_OUT; }
+        | INOUT_SYM                { $$= sp_variable::MODE_INOUT; }
+%else
+        | OUT_SYM sp_opt_nocopy    { $$= sp_variable::MODE_OUT; }
+        | INOUT_SYM  sp_opt_nocopy { $$= sp_variable::MODE_INOUT; }
+%endif ORACLE
         ;
 
 sp_parenthesized_pdparam_list:
@@ -19065,10 +19071,15 @@ sp_opt_default:
           }
         ;
 
+sp_opt_nocopy:
+          _empty
+        | NOCOPY_SYM
+        ;
+
 sp_opt_inout:
-          _empty         { $$= sp_variable::MODE_IN; }
+          _empty                       { $$= sp_variable::MODE_IN; }
         | sp_parameter_type
-        | IN_SYM OUT_SYM { $$= sp_variable::MODE_INOUT; }
+        | IN_SYM OUT_SYM sp_opt_nocopy { $$= sp_variable::MODE_INOUT; }
         ;
 
 sp_proc_stmts1_implicit_block:
