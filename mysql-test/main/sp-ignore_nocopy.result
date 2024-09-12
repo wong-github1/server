@@ -1,12 +1,79 @@
 # 
 # MDEV-34316 sql_mode=ORACLE: Ignore the NOCOPY keyword in stored routine parameters
 # 
+# 
+# sql_mode=DEFAULT. Test with function, IN NOCOPY
+# 
+CREATE OR REPLACE FUNCTION example_func(IN NOCOPY p_in INT) RETURNS INT
+BEGIN
+RETURN 0;
+END;
+$$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'NOCOPY p_in INT) RETURNS INT
+BEGIN
+RETURN 0;
+END' at line 1
+# 
+# sql_mode=DEFAULT. Test with function, OUT NOCOPY
+# 
+CREATE OR REPLACE FUNCTION example_func(OUT NOCOPY p_out INT) RETURNS INT
+BEGIN
+RETURN 0;
+END;
+$$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'NOCOPY p_out INT) RETURNS INT
+BEGIN
+RETURN 0;
+END' at line 1
+# 
+# sql_mode=DEFAULT. Test with function, INOUT NOCOPY
+# 
+CREATE OR REPLACE FUNCTION example_func(INOUT NOCOPY p_inout INT) RETURNS INT
+BEGIN
+RETURN 0;
+END;
+$$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'NOCOPY p_inout INT) RETURNS INT
+BEGIN
+RETURN 0;
+END' at line 1
+# 
+# sql_mode=DEFAULT. Test with procedure, IN NOCOPY
+# 
+CREATE OR REPLACE PROCEDURE example_proc(IN NOCOPY p_in INT)
+BEGIN
+END;
+$$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'NOCOPY p_in INT)
+BEGIN
+END' at line 1
+# 
+# sql_mode=DEFAULT. Test with procedure, OUT NOCOPY
+# 
+CREATE OR REPLACE PROCEDURE example_proc(OUT NOCOPY p_out INT)
+BEGIN
+END;
+$$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'NOCOPY p_out INT)
+BEGIN
+END' at line 1
+# 
+# sql_mode=DEFAULT. Test with procedure, INOUT NOCOPY
+# 
+CREATE OR REPLACE PROCEDURE example_proc(INOUT NOCOPY p_inout INT)
+BEGIN
+END;
+$$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'NOCOPY p_inout INT)
+BEGIN
+END' at line 1
 SET sql_mode=ORACLE;
 # 
-# Test with function
+# sql_mode=ORCALE. Test with function
 # 
 CREATE OR REPLACE FUNCTION example_func(
-p_in IN VARCHAR(255),
+p_in1 IN VARCHAR(255),
+p_in2 IN NOCOPY VARCHAR(255),
 p_out1 OUT INT,
 p_out2 OUT NOCOPY INT,
 p_in_out1 IN OUT VARCHAR(255),
@@ -19,10 +86,11 @@ END;
 $$
 DROP FUNCTION example_func;
 # 
-# Test with procedure
+# sql_mode=ORCALE. Test with procedure
 # 
 CREATE OR REPLACE PROCEDURE example_proc(
-p_in IN VARCHAR(255),
+p_in1 IN VARCHAR(255),
+p_in2 IN NOCOPY VARCHAR(255),
 p_out1 OUT INT,
 p_out2 OUT NOCOPY INT,
 p_in_out1 IN OUT VARCHAR(255),
