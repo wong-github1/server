@@ -69,7 +69,7 @@ BEGIN
 END' at line 1
 SET sql_mode=ORACLE;
 # 
-# sql_mode=ORCALE. Test with function
+# sql_mode=ORACLE. Test with function
 # 
 CREATE OR REPLACE FUNCTION example_func(
 p_in1 IN VARCHAR(255),
@@ -86,7 +86,7 @@ END;
 $$
 DROP FUNCTION example_func;
 # 
-# sql_mode=ORCALE. Test with procedure
+# sql_mode=ORACLE. Test with procedure
 # 
 CREATE OR REPLACE PROCEDURE example_proc(
 p_in1 IN VARCHAR(255),

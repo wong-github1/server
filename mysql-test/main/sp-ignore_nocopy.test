@@ -72,7 +72,7 @@ DELIMITER ;$$
 SET sql_mode=ORACLE;
 
 --echo # 
---echo # sql_mode=ORCALE. Test with function
+--echo # sql_mode=ORACLE. Test with function
 --echo # 
 
 DELIMITER $$;
@@ -97,7 +97,7 @@ DELIMITER ;$$
 DROP FUNCTION example_func;
 
 --echo # 
---echo # sql_mode=ORCALE. Test with procedure
+--echo # sql_mode=ORACLE. Test with procedure
 --echo # 
 
 DELIMITER $$;
