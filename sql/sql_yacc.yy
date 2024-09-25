@@ -16904,6 +16904,19 @@ option_value_following_option_type:
           }
         ;
 
+unqualified_schema_name:  // kokseng
+          _empty
+        ;
+
+schema_name:  // kokseng
+          unqualified_schema_name
+        ;
+
+schema_name_list: // kokseng
+          schema_name
+       // | schema_name_list ',' schema_name
+        ;
+
 /* Option values without preceding option_type. */
 option_value_no_option_type:
           ident_cli_set_usual_case equal
@@ -17133,6 +17146,7 @@ option_value_no_option_type:
                                                            yychar == YYEMPTY)))
               MYSQL_YYABORT;
           }
+        | PATH_SYM schema_name_list // kokseng
         ;
 
 transaction_characteristics:
