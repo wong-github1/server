@@ -16054,6 +16054,7 @@ keyword_set_special_case:
           NAMES_SYM
         | ROLE_SYM
         | PASSWORD_SYM
+        | PATH_SYM
         ;
 
 keyword_sysvar_type:
@@ -16298,7 +16299,6 @@ keyword_func_sp_var_and_label:
         | PARTIAL
         | PARTITIONING_SYM
         | PARTITIONS_SYM
-        | PATH_SYM
         | PERSISTENT_SYM
         | PHASE_SYM
         | PLUGIN_SYM
@@ -16904,19 +16904,6 @@ option_value_following_option_type:
           }
         ;
 
-unqualified_schema_name:  // kokseng
-          _empty
-        ;
-
-schema_name:  // kokseng
-          unqualified_schema_name
-        ;
-
-schema_name_list: // kokseng
-          schema_name
-       // | schema_name_list ',' schema_name
-        ;
-
 /* Option values without preceding option_type. */
 option_value_no_option_type:
           ident_cli_set_usual_case equal
@@ -17146,7 +17133,21 @@ option_value_no_option_type:
                                                            yychar == YYEMPTY)))
               MYSQL_YYABORT;
           }
-        | PATH_SYM schema_name_list // kokseng
+        | PATH_SYM
+          {
+            if (sp_create_assignment_lex(thd, $1.pos()))
+              MYSQL_YYABORT;
+          }
+          set_expr_or_default
+          {
+            Lex_ident_sys tmp(thd, &$1);
+
+            if (unlikely(!tmp.str) ||
+                unlikely(Lex->set_variable(&tmp, $3.expr, $3.expr_str)) ||
+               // unlikely(Lex->set_variable(&tmp, $4.expr, $4.expr_str)) ||
+                unlikely(sp_create_assignment_instr(thd, yychar == YYEMPTY)))
+              MYSQL_YYABORT;
+          }
         ;
 
 transaction_characteristics:
