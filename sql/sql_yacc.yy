@@ -17144,7 +17144,6 @@ option_value_no_option_type:
 
             if (unlikely(!tmp.str) ||
                 unlikely(Lex->set_variable(&tmp, $3.expr, $3.expr_str)) ||
-               // unlikely(Lex->set_variable(&tmp, $4.expr, $4.expr_str)) ||
                 unlikely(sp_create_assignment_instr(thd, yychar == YYEMPTY)))
               MYSQL_YYABORT;
           }

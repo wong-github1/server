@@ -7472,7 +7472,7 @@ static bool sysvar_path_handle_quote_delimited(CHARSET_INFO *cs, char **tokens,
   int count, bool ansi_quotes, bool use_mb)
 {
   bool ret = false;
-  int len;
+  int len = 0;
 
   for (int i = 0; i < count; i++)
   {
