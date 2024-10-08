@@ -7419,7 +7419,7 @@ static bool sysvar_path_is_quote(CHARSET_INFO *cs, char *token,
   bool prefix, bool use_mb, char quote)
 {
   bool ret = false;
-  int len;
+  int len = 0;
 
   if (prefix)
   {
@@ -7472,7 +7472,7 @@ static bool sysvar_path_handle_quote_delimited(CHARSET_INFO *cs, char **tokens,
   int count, bool ansi_quotes, bool use_mb)
 {
   bool ret = false;
-  int len = 0;
+  size_t len = 0;
 
   for (int i = 0; i < count; i++)
   {
@@ -7592,12 +7592,13 @@ static bool sysvar_path_parsing_utf(CHARSET_INFO *cs, LEX_CSTRING *cstring,
         }
         *tokens = tmp;
 
-        (*tokens)[*token_cnt] = strndup(token, curr - token);
+        (*tokens)[*token_cnt] = (char *) calloc( curr - token + 1, sizeof(char) );
         if ((*tokens)[*token_cnt] == NULL)
         {
           fprintf(stderr, "Memory allocation failed for token\n");
           goto err;
         }
+        memcpy( (*tokens)[*token_cnt], token, curr - token );
 
         (*token_cnt)++;
         if (curr < end)
@@ -7628,9 +7629,10 @@ static bool sysvar_path_parsing_ascii(CHARSET_INFO *cs, LEX_CSTRING *cstring,
   char *input_str;
   char *token;
 
-  input_str = strndup(cstring->str, cstring->length);
+  input_str = (char *) calloc( cstring->length + 1, sizeof(char) );
   if (input_str == NULL)
     goto err;
+  memcpy(input_str, cstring->str, cstring->length);
 
   token = strtok(input_str, ",");
   if (token == NULL)
