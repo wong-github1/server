@@ -6051,6 +6051,8 @@ public:
   bool need_report_unit_results();
   bool report_collected_unit_results();
   bool init_collecting_unit_results();
+
+  void get_db_list(Dynamic_array<LEX_CSTRING> *db_list);
 };
 
 

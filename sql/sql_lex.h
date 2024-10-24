@@ -3805,6 +3805,7 @@ public:
   sp_name *make_sp_name(THD *thd, const Lex_ident_sys_st &name);
   sp_name *make_sp_name(THD *thd, const Lex_ident_sys_st &name1,
                                   const Lex_ident_sys_st &name2);
+  sp_name *make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name);
   sp_name *make_sp_name_package_routine(THD *thd,
                                         const Lex_ident_sys_st &name);
   sp_lex_local *package_routine_start(THD *thd,

@@ -7457,6 +7457,36 @@ sp_name *LEX::make_sp_name(THD *thd, const Lex_ident_sys_st &name)
 }
 
 
+sp_name *LEX::make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name)
+{
+  sp_name *res;
+  // Lex_ident_db_normalized db;
+  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+
+  res= make_sp_name(thd, name);
+
+  thd->get_db_list(&db_list);
+  // size_t i= db_list.elements();
+  // while (i--)
+  // {
+  //   LEX_CSTRING tmpstr= db_list.at(i);
+  //   printf("tmpstr.str = %s\n", tmpstr.str);
+  // }
+
+  // todo
+  if (likely(res))
+  {
+
+  }
+  else
+  {
+
+  }
+
+  return res;
+}
+
+
 /**
   When a package routine name is stored in memory in Database_qualified_name,
   the dot character is used to delimit package name from the routine name,
@@ -9418,6 +9448,7 @@ bool LEX::call_statement_start(THD *thd, sp_name *name)
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 {
   sp_name *spname= make_sp_name(thd, *name);
+  // todo: getting to switch to make_sp_name_use_path()
   return unlikely(!spname) || call_statement_start(thd, spname);
 }
 
