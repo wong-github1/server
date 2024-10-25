@@ -41,6 +41,7 @@
 #ifdef WITH_WSREP
 #include "mysql/service_wsrep.h"
 #endif
+#include "sql_db.h"
 
 void LEX::parse_error(uint err_number)
 {
@@ -7460,27 +7461,52 @@ sp_name *LEX::make_sp_name(THD *thd, const Lex_ident_sys_st &name)
 sp_name *LEX::make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name)
 {
   sp_name *res;
-  // Lex_ident_db_normalized db;
-  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+  Parser_state *oldps;
 
   res= make_sp_name(thd, name);
-
-  thd->get_db_list(&db_list);
-  // size_t i= db_list.elements();
-  // while (i--)
-  // {
-  //   LEX_CSTRING tmpstr= db_list.at(i);
-  //   printf("tmpstr.str = %s\n", tmpstr.str);
-  // }
-
-  // todo
   if (likely(res))
   {
-
+    oldps= thd->m_parser_state;
+    thd->m_parser_state= NULL;
+    if (likely(sp_handler_procedure.sp_find_routine(thd, res, false)))
+    {
+      thd->m_parser_state= oldps;
+      return res;
+    }
+    thd->m_parser_state= oldps;
   }
-  else
-  {
 
+  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+  size_t count;
+
+  thd->get_db_list(&db_list);
+  count= db_list.elements();
+
+  if (count > 0)
+  {
+    LEX_CSTRING dbstring;
+    Lex_ident_db_normalized db;
+    sp_name *res2;
+
+    for (size_t i= 0; i < count; i++)
+    {
+      dbstring= db_list.at(i);
+      if ((!unlikely(check_db_dir_existence(dbstring.str))))
+      {
+        db= Lex_ident_db_normalized(dbstring);
+        if (unlikely((!(res2= new (thd->mem_root) sp_name(db, name, false)))))
+          return NULL;
+
+        oldps= thd->m_parser_state;
+        thd->m_parser_state= NULL;
+        if (likely(sp_handler_procedure.sp_find_routine(thd, res2, false)))
+        {
+          thd->m_parser_state= oldps;
+          return res2;
+        }
+        thd->m_parser_state= oldps;
+      }
+    }
   }
 
   return res;
@@ -7524,6 +7550,64 @@ sp_name *LEX::make_sp_name(THD *thd, const Lex_ident_sys_st &name1,
       unlikely(Lex_ident_routine::check_name_with_error(name2)) ||
       unlikely(!(res= new (thd->mem_root) sp_name(norm_name1, name2, true))))
     return NULL;
+  return res;
+}
+
+
+sp_name *LEX::make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name1,
+                                              const Lex_ident_sys_st &name2)
+{
+  sp_name *res= make_sp_name(thd, name1, name2);
+
+  if (likely(res))
+  {
+    Parser_state *oldps;
+
+    oldps= thd->m_parser_state;
+    thd->m_parser_state= NULL;
+    if (likely(sp_handler_procedure.sp_find_routine(thd, res, false)))
+    {
+      thd->m_parser_state= oldps;
+      return res;
+    }
+    thd->m_parser_state= oldps;
+
+    Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+    size_t count;
+    LEX_CSTRING db_cstring;
+    Lex_ident_db_normalized db;
+    Identifier_chain2 q_pkg_proc;
+    LEX_CSTRING pkg_dot_proc;
+    sp_name *res2;
+
+    thd->get_db_list(&db_list);
+    count= db_list.elements();
+
+    for (size_t i= 0; i < count; i++)
+    {
+      db_cstring= db_list.at(i);
+      if ((!unlikely(check_db_dir_existence(db_cstring.str))))
+      {
+       q_pkg_proc = Identifier_chain2(name1, name2);
+
+        db= Lex_ident_db_normalized(db_cstring);
+        if (!(pkg_dot_proc= q_pkg_proc.make_qname(thd->mem_root)).str ||
+            check_ident_length(&pkg_dot_proc) ||
+            !(res2= new (thd->mem_root) sp_name(db, pkg_dot_proc, true)))
+          return NULL;
+
+        oldps= thd->m_parser_state;
+        thd->m_parser_state= NULL;
+        if (likely(sp_handler_package_procedure.sp_find_routine(thd, res2, false)))
+        {
+          thd->m_parser_state= oldps;
+          return res2;
+        }
+        thd->m_parser_state= oldps;
+      }
+    }
+  }
+
   return res;
 }
 
@@ -9447,8 +9531,7 @@ bool LEX::call_statement_start(THD *thd, sp_name *name)
 
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 {
-  sp_name *spname= make_sp_name(thd, *name);
-  // todo: getting to switch to make_sp_name_use_path()
+  sp_name *spname= make_sp_name_use_path(thd, *name);
   return unlikely(!spname) || call_statement_start(thd, spname);
 }
 
@@ -9456,7 +9539,7 @@ bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
                                          const Lex_ident_sys_st *name2)
 {
-  sp_name *spname= make_sp_name(thd, *name1, *name2);
+  sp_name *spname= make_sp_name_use_path(thd, *name1, *name2);
   return unlikely(!spname) || call_statement_start(thd, spname);
 }
 
