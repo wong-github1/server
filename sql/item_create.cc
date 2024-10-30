@@ -37,6 +37,7 @@
 #include "sql_time.h"
 #include "sql_type_geom.h"
 #include <mysql/plugin_function.h>
+#include "sql_db.h"
 
 
 extern "C" uchar*
@@ -2825,10 +2826,54 @@ static bool has_named_parameters(List<Item> *params)
 }
 
 
+Lex_ident_db_normalized
+Create_qfunc::get_db_sql_path(THD *thd, const LEX_CSTRING &name)
+{
+  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+  size_t count;
+  LEX_CSTRING db_cstring;
+
+  thd->get_db_list(&db_list);
+  count= db_list.elements();
+  for (size_t i= 0; i < count; i++)
+  {
+    db_cstring= db_list.at(i);
+    if (likely(!check_db_dir_existence(db_cstring.str)))
+    {
+      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
+      if (db_int.str)
+      {
+        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
+        if (dbn.str)
+        {
+          sp_name *spname= new (thd->mem_root) sp_name(dbn, name, false);
+          if (unlikely(!spname))
+            return Lex_ident_db_normalized();
+
+          Parser_state *oldps;
+          oldps= thd->m_parser_state;
+          thd->m_parser_state= NULL;
+          if (likely(sp_handler_function.sp_find_routine(thd, spname, false)))
+          {
+            thd->m_parser_state= oldps;
+            return dbn;
+          }
+          thd->m_parser_state= oldps;
+        }
+      }
+    }
+  }
+
+  return Lex_ident_db_normalized();
+}
+
+
 Item*
 Create_qfunc::create_func(THD *thd, const LEX_CSTRING *name,
                           List<Item> *item_list)
 {
+  Lex_ident_db_normalized db;
+
   if (unlikely(! thd->db.str && ! thd->lex->sphead))
   {
     /*
@@ -2842,14 +2887,38 @@ Create_qfunc::create_func(THD *thd, const LEX_CSTRING *name,
       Reusing ER_SP_DOES_NOT_EXIST have a message consistent with
       the case when a default database exist, see Create_sp_func::create().
     */
-    my_error(ER_SP_DOES_NOT_EXIST, MYF(0),
-             "FUNCTION", name->str);
-    return NULL;
+
+    db= get_db_sql_path(thd, *name);
+    if (!db.str)
+    {
+      my_error(ER_SP_DOES_NOT_EXIST, MYF(0),
+               "FUNCTION", name->str);
+      return NULL;
+    }
   }
 
-  Lex_ident_db_normalized db= thd->lex->copy_db_normalized();
   if (!db.str)
-    return NULL; /*No db or EOM, error was already sent */
+  {
+    db= thd->lex->copy_db_normalized(false);
+    if (!db.str)
+      db= get_db_sql_path(thd, *name);
+    else
+    {
+      sp_name *spname= new (thd->mem_root) sp_name(db, *name, false);
+      if (unlikely(!spname))
+        return NULL;
+
+      Parser_state *oldps;
+      oldps= thd->m_parser_state;
+      thd->m_parser_state= NULL;
+      if (unlikely(!sp_handler_function.sp_find_routine(thd, spname, false)))
+        db= get_db_sql_path(thd, *name);
+      thd->m_parser_state= oldps;
+    }
+  }
+
+  if (!db.str)
+    return NULL;
 
   return create_with_db(thd, db, Lex_ident_routine(*name), false, item_list);
 }
