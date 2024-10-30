@@ -74,6 +74,11 @@ class Sp_handler
                                            const Sp_handler **pkg_routine_hndlr,
                                            Database_qualified_name *pkgname)
                                            const;
+  bool sp_resolve_package_routine_explicit_quick(THD *thd,
+                                           sp_head *caller,
+                                           sp_name *name,
+                                           bool *found)
+                                           const;
 protected:
   int db_find_routine_aux(THD *thd, const Database_qualified_name *name,
                           TABLE *table) const;
@@ -195,6 +200,10 @@ public:
                                   sp_name *name,
                                   const Sp_handler **pkg_routine_handler,
                                   Database_qualified_name *pkgname) const;
+  bool sp_resolve_package_routine_quick(THD *thd,
+                                  sp_head *caller,
+                                  sp_name *name,
+                                  bool *found) const;
   virtual sp_head *sp_find_routine(THD *thd,
                                    const Database_qualified_name *name,
                                    bool cache_only) const;

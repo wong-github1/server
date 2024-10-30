@@ -7749,5 +7749,5 @@ err:
 static Sys_var_charptr Sys_pathdir(
        "path", "SET PATH statement",
        SESSION_VAR(path), CMD_LINE(REQUIRED_ARG),
-       ".,sys", NO_MUTEX_GUARD, NOT_IN_BINLOG,
+       DEFAULT(".,sys"), NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(sysvar_path_on_check));

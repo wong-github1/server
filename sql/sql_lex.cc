@@ -4295,7 +4295,7 @@ bool LEX::copy_db_to(LEX_CSTRING *to)
 }
 
 
-Lex_ident_db_normalized LEX::copy_db_normalized()
+Lex_ident_db_normalized LEX::copy_db_normalized(bool f_raise_err)
 {
   if (sphead && sphead->m_name.str)
   {
@@ -4303,7 +4303,7 @@ Lex_ident_db_normalized LEX::copy_db_normalized()
     DBUG_ASSERT(sphead->m_db.length);
     return thd->to_ident_db_normalized_with_error(sphead->m_db);
   }
-  return thd->copy_db_normalized();
+  return thd->copy_db_normalized(f_raise_err);
 }
 
 
@@ -7458,61 +7458,6 @@ sp_name *LEX::make_sp_name(THD *thd, const Lex_ident_sys_st &name)
 }
 
 
-sp_name *LEX::make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name)
-{
-  sp_name *res;
-  Parser_state *oldps;
-
-  res= make_sp_name(thd, name);
-  if (likely(res))
-  {
-    oldps= thd->m_parser_state;
-    thd->m_parser_state= NULL;
-    if (likely(sp_handler_procedure.sp_find_routine(thd, res, false)))
-    {
-      thd->m_parser_state= oldps;
-      return res;
-    }
-    thd->m_parser_state= oldps;
-  }
-
-  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
-  size_t count;
-
-  thd->get_db_list(&db_list);
-  count= db_list.elements();
-
-  if (count > 0)
-  {
-    LEX_CSTRING dbstring;
-    Lex_ident_db_normalized db;
-    sp_name *res2;
-
-    for (size_t i= 0; i < count; i++)
-    {
-      dbstring= db_list.at(i);
-      if ((!unlikely(check_db_dir_existence(dbstring.str))))
-      {
-        db= Lex_ident_db_normalized(dbstring);
-        if (unlikely((!(res2= new (thd->mem_root) sp_name(db, name, false)))))
-          return NULL;
-
-        oldps= thd->m_parser_state;
-        thd->m_parser_state= NULL;
-        if (likely(sp_handler_procedure.sp_find_routine(thd, res2, false)))
-        {
-          thd->m_parser_state= oldps;
-          return res2;
-        }
-        thd->m_parser_state= oldps;
-      }
-    }
-  }
-
-  return res;
-}
-
-
 /**
   When a package routine name is stored in memory in Database_qualified_name,
   the dot character is used to delimit package name from the routine name,
@@ -7554,14 +7499,20 @@ sp_name *LEX::make_sp_name(THD *thd, const Lex_ident_sys_st &name1,
 }
 
 
-sp_name *LEX::make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name1,
-                                              const Lex_ident_sys_st &name2)
+sp_name *LEX::make_sp_name_sql_path(THD *thd, const Lex_ident_sys_st &name)
 {
-  sp_name *res= make_sp_name(thd, name1, name2);
+  if (unlikely(Lex_ident_routine::check_name_with_error(name)))
+    return NULL;
 
-  if (likely(res))
+  Lex_ident_db_normalized db;
+  Parser_state *oldps;
+
+  db= copy_db_normalized(false);
+  if (db.str)
   {
-    Parser_state *oldps;
+    sp_name *res= new (thd->mem_root) sp_name(db, name, false);
+    if (unlikely(!spname))
+      return NULL;
 
     oldps= thd->m_parser_state;
     thd->m_parser_state= NULL;
@@ -7571,44 +7522,139 @@ sp_name *LEX::make_sp_name_use_path(THD *thd, const Lex_ident_sys_st &name1,
       return res;
     }
     thd->m_parser_state= oldps;
+  }
 
-    Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
-    size_t count;
-    LEX_CSTRING db_cstring;
-    Lex_ident_db_normalized db;
-    Identifier_chain2 q_pkg_proc;
-    LEX_CSTRING pkg_dot_proc;
-    sp_name *res2;
+  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+  size_t count;
+  LEX_CSTRING db_cstring;
 
-    thd->get_db_list(&db_list);
-    count= db_list.elements();
-
-    for (size_t i= 0; i < count; i++)
+  thd->get_db_list(&db_list);
+  count= db_list.elements();
+  for (size_t i= 0; i < count; i++)
+  {
+    db_cstring= db_list.at(i);
+    if (likely(!check_db_dir_existence(db_cstring.str)))
     {
-      db_cstring= db_list.at(i);
-      if ((!unlikely(check_db_dir_existence(db_cstring.str))))
+      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
+      if (db_int.str)
       {
-       q_pkg_proc = Identifier_chain2(name1, name2);
-
-        db= Lex_ident_db_normalized(db_cstring);
-        if (!(pkg_dot_proc= q_pkg_proc.make_qname(thd->mem_root)).str ||
-            check_ident_length(&pkg_dot_proc) ||
-            !(res2= new (thd->mem_root) sp_name(db, pkg_dot_proc, true)))
-          return NULL;
-
-        oldps= thd->m_parser_state;
-        thd->m_parser_state= NULL;
-        if (likely(sp_handler_package_procedure.sp_find_routine(thd, res2, false)))
+        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
+        if (dbn.str)
         {
+          sp_name *spname= new (thd->mem_root) sp_name(dbn, name, false);
+          if (unlikely(!spname))
+            return NULL;
+
+          oldps= thd->m_parser_state;
+          thd->m_parser_state= NULL;
+          if (likely(sp_handler_procedure.sp_find_routine(thd, spname, false)))
+          {
+            thd->m_parser_state= oldps;
+            return spname;
+          }
           thd->m_parser_state= oldps;
-          return res2;
         }
-        thd->m_parser_state= oldps;
       }
     }
   }
 
-  return res;
+  my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
+
+  return NULL;
+}
+
+
+sp_name *LEX::make_sp_name_sql_path(THD *thd, const Lex_ident_sys_st &name1,
+                                              const Lex_ident_sys_st &name2)
+{
+  sp_name *res= make_sp_name(thd, name1, name2);
+  if (unlikely(!res))
+    return NULL;
+
+  bool found= false;
+  bool ret= false;
+
+  ret= precheck_db_package_routine(thd, Lex_ident_db_normalized(name1),
+                Lex_ident_routine(name2), &sp_handler_procedure, true, &found);
+  if (!ret)
+  {
+    if (found)
+      return res;
+  }
+  else
+    return NULL;
+
+  found= false;
+  ret= precheck_db_routine(thd, Lex_ident_db_normalized(name1),
+                Lex_ident_routine(name2), &found);
+  if (!ret)
+  {
+    if (found)
+      return res;
+  }
+  else
+    return NULL;
+
+  if (Lex_ident_routine::check_name_with_error(name1))
+    return NULL;
+
+  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+  size_t count;
+  LEX_CSTRING db_cstring;
+
+  thd->get_db_list(&db_list);
+  count= db_list.elements();
+  for (size_t i= 0; i < count; i++)
+  {
+    db_cstring= db_list.at(i);
+    if (likely(!check_db_dir_existence(db_cstring.str)))
+    {
+      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
+      if (db_int.str)
+      {
+        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
+        if (dbn.str)
+        {
+          Identifier_chain2 q_pkg_proc(name1, name2);
+          sp_name *spname;
+          Database_qualified_name q_db_pkg(dbn, name1);
+          LEX_CSTRING pkg_dot_proc;
+
+          if (!(pkg_dot_proc= q_pkg_proc.make_qname(thd->mem_root)).str ||
+              check_ident_length(&pkg_dot_proc) ||
+              !(spname= new (thd->mem_root) sp_name(dbn, pkg_dot_proc, true)))
+            return NULL;
+
+          Parser_state *oldps;
+          oldps= thd->m_parser_state;
+          thd->m_parser_state= NULL;
+          if (likely(sp_handler_package_procedure.sp_find_routine(thd, spname, false)))
+          {
+            // found
+            thd->m_parser_state= oldps;
+
+            sql_command= SQLCOM_CALL;
+
+            sp_handler_package_function.add_used_routine(thd->lex, thd, spname);
+            sp_handler_package_body.add_used_routine(thd->lex, thd, &q_db_pkg);
+
+            m_sql_cmd= new (thd->mem_root) Sql_cmd_call(spname,
+                                               &sp_handler_package_procedure);
+
+            if (!m_sql_cmd)
+              return NULL;
+
+            return spname;
+          }
+          thd->m_parser_state= oldps;
+        }
+      }
+    }
+  }
+
+  my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
+
+  return NULL;
 }
 
 
@@ -9531,7 +9577,7 @@ bool LEX::call_statement_start(THD *thd, sp_name *name)
 
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 {
-  sp_name *spname= make_sp_name_use_path(thd, *name);
+  sp_name *spname= make_sp_name_sql_path(thd, *name);
   return unlikely(!spname) || call_statement_start(thd, spname);
 }
 
@@ -9539,8 +9585,14 @@ bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
                                          const Lex_ident_sys_st *name2)
 {
-  sp_name *spname= make_sp_name_use_path(thd, *name1, *name2);
-  return unlikely(!spname) || call_statement_start(thd, spname);
+  sp_name *spname= make_sp_name_sql_path(thd, *name1, *name2);
+  if(unlikely(!spname))
+    return true;
+
+  if (unlikely(!strchr(spname->m_name.str, '.')))
+    return call_statement_start(thd, spname);
+
+  return false;
 }
 
 
@@ -9927,27 +9979,29 @@ Item *LEX::make_item_func_call_generic(THD *thd,
     - MySQL.version() is the SQL 2003 syntax for the native function
     version() (a vendor can specify any schema).
   */
-  return make_item_func_call_generic(thd, db, name, args);
+  return make_item_func_call_generic(thd, db, name, args, true);
 }
 
 
 Item *LEX::make_item_func_call_generic(THD *thd,
                                        const Lex_ident_sys &db,
                                        const Lex_ident_sys &name,
-                                       List<Item> *args)
+                                       List<Item> *args,
+                                       bool sql_path)
 {
   const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db);
   if (!db_int.str || Lex_ident_routine::check_name_with_error(name))
     return NULL;
   return make_item_func_call_generic(thd, db_int,
-                                     Lex_ident_routine(name), args);
+                                     Lex_ident_routine(name), args, sql_path);
 }
 
 
 Item *LEX::make_item_func_call_generic(THD *thd,
                                        const Lex_ident_db &db,
                                        const Lex_ident_routine &name,
-                                       List<Item> *args)
+                                       List<Item> *args,
+                                       bool sql_path)
 {
   const Schema *schema= Schema::find_by_name(db);
   if (schema)
@@ -9959,6 +10013,35 @@ Item *LEX::make_item_func_call_generic(THD *thd,
   const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db);
   if (!dbn.str || Lex_ident_routine::check_name_with_error(name))
     return NULL;
+
+  if (sql_path)
+  {
+    bool found= false;
+    bool ret= false;
+
+    ret= precheck_db_package_routine(thd, dbn, name, &sp_handler_function, true, &found);
+    if (!ret)
+    {
+      if (found)
+        return builder->create_with_db(thd, dbn, name, true, args);
+    }
+    else
+      return NULL;
+
+    found= false;
+    ret= precheck_db_routine(thd, dbn, name, &found);
+    if (!ret)
+    {
+      if (found)
+        return builder->create_with_db(thd, dbn, name, true, args);
+    }
+    else
+      return NULL;
+
+    Item *itemRet= make_item_func_call_generic_sql_path(thd, dbn, name, args);
+    if (likely(itemRet))
+      return itemRet;
+  }
 
   return builder->create_with_db(thd, dbn, name, true, args);
 }
@@ -10008,6 +10091,111 @@ Item *LEX::make_item_func_call_generic(THD *thd,
                                             *args);
   return new (thd->mem_root) Item_func_sp(thd, thd->lex->current_context(),
                                           qname, &sp_handler_package_function);
+}
+
+
+bool LEX::precheck_db_package_routine(THD *thd,
+                                      const Lex_ident_db_normalized &db,
+                                      const Lex_ident_routine &name,
+                                      Sp_handler *sph,
+                                      bool use_explicit_name,
+                                      bool *found) const
+{
+  sp_name *qname;
+
+  qname= new (thd->mem_root) sp_name(db, name, use_explicit_name);
+  if (unlikely(!qname))
+    return true;
+
+  return sph->sp_resolve_package_routine_quick(thd, 
+                      thd->lex->sphead, qname, found);
+}
+
+
+bool LEX::precheck_db_routine(THD *thd,
+                              const Lex_ident_db_normalized &db,
+                              const Lex_ident_routine &name,
+                              bool *found) const
+{
+  sp_name *spname;
+  Parser_state *oldps;
+
+  spname= new (thd->mem_root) sp_name(db, name, true);
+  if (unlikely(!spname))
+    return true;
+
+  oldps= thd->m_parser_state;
+  thd->m_parser_state= NULL;
+  if (likely(sp_handler_function.sp_find_routine(thd, spname, false)))
+    *found = true;
+  thd->m_parser_state= oldps;
+
+  return false;
+}
+
+
+Item *LEX::make_item_func_call_generic_sql_path(THD *thd,
+                                            const Lex_ident_db_normalized &db,
+                                            const Lex_ident_routine &name,
+                                            List<Item> *args)
+{
+  if (Lex_ident_routine::check_name_with_error(db))
+    return NULL;
+
+  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
+  size_t count;
+  LEX_CSTRING db_cstring;
+
+  thd->get_db_list(&db_list);
+  count= db_list.elements();
+  for (size_t i= 0; i < count; i++)
+  {
+    db_cstring= db_list.at(i);
+    if (likely(!check_db_dir_existence(db_cstring.str)))
+    {
+      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
+      if (db_int.str)
+      {
+        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
+        if (dbn.str)
+        {
+          Identifier_chain2 q_pkg_func(db, name);
+          sp_name *qname;
+          Database_qualified_name q_db_pkg(dbn, db);
+          LEX_CSTRING pkg_dot_func;
+
+          if (!(pkg_dot_func= q_pkg_func.make_qname(thd->mem_root)).str ||
+              check_ident_length(&pkg_dot_func) ||
+              !(qname= new (thd->mem_root) sp_name(dbn, pkg_dot_func, true)))
+            return NULL;
+
+          Parser_state *oldps;
+          oldps= thd->m_parser_state;
+          thd->m_parser_state= NULL;
+          if (likely(sp_handler_package_function.sp_find_routine(thd, qname, false)))
+          {
+            // found
+            thd->m_parser_state= oldps;
+
+            sp_handler_package_function.add_used_routine(thd->lex, thd, qname);
+            sp_handler_package_body.add_used_routine(thd->lex, thd, &q_db_pkg);
+
+            thd->lex->safe_to_cache_query= 0;
+
+            if (args && args->elements > 0)
+              return new (thd->mem_root) Item_func_sp(thd, thd->lex->current_context(),
+                                                      qname, &sp_handler_package_function,
+                                                      *args);
+            return new (thd->mem_root) Item_func_sp(thd, thd->lex->current_context(),
+                                                    qname, &sp_handler_package_function);
+          }
+          thd->m_parser_state= oldps;
+        }
+      }
+    }
+  }
+
+  return NULL;
 }
 
 

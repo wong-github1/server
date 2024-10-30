@@ -2616,6 +2616,31 @@ bool Sp_handler::
 }
 
 
+bool Sp_handler::
+  sp_resolve_package_routine_explicit_quick(THD *thd,
+                                            sp_head *caller,
+                                            sp_name *name,
+                                            bool *found) const
+{
+  sp_package *pkg;
+
+  const Lex_ident_db tmpdb= Lex_ident_db(thd->db);
+  if (is_package_public_routine(thd, tmpdb, name->m_db, name->m_name, type()) ||
+      // Check if a package routine calls a private routine
+      (caller && caller->m_parent &&
+       is_package_body_routine(thd, caller->m_parent,
+                               name->m_db, name->m_name, type())) ||
+      // Check if a package initialization sections calls a private routine
+      (caller && (pkg= caller->get_package()) &&
+       is_package_body_routine(thd, pkg, name->m_db, name->m_name, type())))
+  {
+    *found = true;
+  }
+
+  return false;
+}
+
+
 /**
   Detect cases when a package routine (rather than a standalone routine)
   is called, and rewrite sp_name accordingly.
@@ -2645,6 +2670,22 @@ Sp_handler::sp_resolve_package_routine(THD *thd,
                                              pkg_routine_handler, pkgname) :
          sp_resolve_package_routine_implicit(thd, caller, name,
                                              pkg_routine_handler, pkgname);
+}
+
+
+bool
+Sp_handler::sp_resolve_package_routine_quick(THD *thd,
+                                       sp_head *caller,
+                                       sp_name *name,
+                                       bool *found) const
+{
+  if (!thd->db.length)
+    return false;
+
+  return name->m_explicit_name ?
+         sp_resolve_package_routine_explicit_quick(thd, caller, name, found) :
+        //  sp_resolve_package_routine_implicit_quick(thd, caller, name, found);
+         false;
 }
 
 
