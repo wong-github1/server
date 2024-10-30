@@ -437,8 +437,9 @@ static struct my_option my_long_options[] =
   {"hex-blob", 0, "Dump binary strings (BINARY, "
     "VARBINARY, BLOB) in hexadecimal format.",
    &opt_hex_blob, &opt_hex_blob, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"host", 'h', "Connect to host.", &current_host,
-   &current_host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"host", 'h', "Connect to host. Defaults in the following order: "
+  "$MARIADB_HOST, and then localhost",
+   &current_host, &current_host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"ignore-database", OPT_IGNORE_DATABASE,
    "Do not dump the specified database. To specify more than one database to ignore, "
    "use the directive multiple times, once for each database. Only takes effect "
@@ -1107,8 +1108,13 @@ get_one_option(const struct my_option *opt,
 
 static int get_options(int *argc, char ***argv)
 {
+  char *tmp;
   int ho_error;
   MYSQL_PARAMETERS *mysql_params= mysql_get_parameters();
+
+  tmp= getenv("MARIADB_HOST");
+  if (tmp && current_host == NULL)
+    current_host= my_strdup(PSI_NOT_INSTRUMENTED, tmp, MYF(MY_WME));
 
   opt_max_allowed_packet= *mysql_params->p_max_allowed_packet;
   opt_net_buffer_length= *mysql_params->p_net_buffer_length;
@@ -5144,33 +5150,25 @@ static int dump_all_udfs()
 
 static int dump_all_servers()
 {
-  /* No create server yet - MDEV-15696 */
   MYSQL_ROW row;
-  MYSQL_RES *tableres;
-  MYSQL_FIELD *f;
-  unsigned int num_fields, i;
-  my_bool comma_prepend= 0;
-  const char *qstring;
+  MYSQL_RES *tableres, *serverres;
 
-  if (mysql_query_with_error_report(mysql, &tableres, "SELECT * FROM mysql.servers"))
+  if (mysql_query_with_error_report(mysql, &tableres,
+                                    "SELECT Server_name FROM mysql.servers"))
     return 1;
-  num_fields= mysql_num_fields(tableres);
   while ((row= mysql_fetch_row(tableres)))
   {
-    fprintf(md_result_file,"CREATE %sSERVER %s%s FOREIGN DATA WRAPPER %s OPTIONS (",
+    /* row[0] is the server name */
+    char buff[20+FN_REFLEN];
+    my_snprintf(buff, sizeof(buff), "show create server %s", row[0]);
+    if (mysql_query_with_error_report(mysql, &serverres, buff))
+      return 1;
+    row= mysql_fetch_row(serverres);
+    row[1]+= 14;                /* strlen("CREATE SERVER ") == 14 */
+    fprintf(md_result_file, "CREATE %sSERVER %s%s\n",
             opt_replace_into ? "/*M!100103 OR REPLACE */ ": "",
-            opt_ignore ? "/*M!100103 IF NOT EXISTS */ " : "", row[0], row[7]);
-    for (i= 1; i < num_fields; i++)
-    {
-      if (i == 7 || row[i][0] == '\0') /* Wrapper or empty string */
-        continue;
-      f= &tableres->fields[i];
-      qstring= (f->type == MYSQL_TYPE_STRING || f->type == MYSQL_TYPE_VAR_STRING) ? "'" : "";
-      fprintf(md_result_file, "%s%s %s%s%s",
-              (comma_prepend ? ", " : ""), f->name, qstring, row[i], qstring);
-      comma_prepend= 1;
-    }
-    fputs(");\n", md_result_file);
+            opt_ignore ? "/*M!100103 IF NOT EXISTS */ " : "", row[1]);
+    mysql_free_result(serverres);
   }
   mysql_free_result(tableres);
 
@@ -7432,7 +7430,7 @@ int main(int argc, char **argv)
       goto err;
     connection_pool.for_each_connection([](MYSQL *c) {
       if (start_transaction(c))
-        maybe_die(EX_MYSQLERR, "Failed to start transaction on connection ID %u", mysql->thread_id);
+        maybe_die(EX_MYSQLERR, "Failed to start transaction on connection ID %lu", mysql->thread_id);
     });
   }
 

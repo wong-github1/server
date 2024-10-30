@@ -36,6 +36,7 @@
 #include "sql_i_s.h"
 #include "sql_type.h"               /* vers_kind_t */
 #include "privilege.h"              /* privilege_t */
+#include "my_bit.h"
 
 /*
   Buffer for unix timestamp in microseconds:
@@ -1936,6 +1937,7 @@ public:
   bool vers_switch_partition(THD *thd, TABLE_LIST *table_list,
                              Open_table_context *ot_ctx);
 #endif
+  bool vers_implicit() const;
 
   int update_generated_fields();
   void period_prepare_autoinc();
@@ -2012,6 +2014,70 @@ typedef struct st_foreign_key_info
   LEX_CSTRING *referenced_key_name;
   List<LEX_CSTRING> foreign_fields;
   List<LEX_CSTRING> referenced_fields;
+private:
+  unsigned char *fields_nullable= nullptr;
+
+  /**
+    Get the number of fields exist in foreign key relationship
+  */
+  unsigned get_n_fields() const noexcept
+  {
+    unsigned n_fields= foreign_fields.elements;
+    if (n_fields == 0)
+      n_fields= referenced_fields.elements;
+    return n_fields;
+  }
+
+  /**
+    Assign nullable field for referenced and foreign fields
+    based on number of fields. This nullable fields
+    should be allocated by engine for passing the
+    foreign key information
+    @param thd thread to allocate the memory
+    @param num_fields number of fields
+  */
+  void assign_nullable(THD *thd, unsigned num_fields) noexcept
+  {
+    fields_nullable=
+      (unsigned char *)thd_calloc(thd,
+                                  my_bits_in_bytes(2 * num_fields));
+  }
+
+public:
+  /**
+    Set nullable bit for the field in the given field
+    @param referenced set null bit for referenced column
+    @param field field number
+    @param n_fields number of fields
+  */
+  void set_nullable(THD *thd, bool referenced,
+                    unsigned field, unsigned n_fields) noexcept
+  {
+    if (!fields_nullable)
+      assign_nullable(thd, n_fields);
+    DBUG_ASSERT(fields_nullable);
+    DBUG_ASSERT(field < n_fields);
+    size_t bit= size_t{field} + referenced * n_fields;
+    fields_nullable[bit / 8]|= (unsigned char)(1 << (bit % 8));
+  }
+
+  /**
+    Check whether the given field_no in foreign key field or
+    referenced key field
+    @param referenced check referenced field nullable value
+    @param field  field number
+    @return true if the field is nullable or false if it is not
+  */
+  bool is_nullable(bool referenced, unsigned field) const noexcept
+  {
+    if (!fields_nullable)
+      return false;
+    unsigned n_field= get_n_fields();
+    DBUG_ASSERT(field < n_field);
+    size_t bit= size_t{field} + referenced * n_field;
+    return fields_nullable[bit / 8] & (1 << (bit % 8));
+  }
+
 } FOREIGN_KEY_INFO;
 
 LEX_CSTRING *fk_option_name(enum_fk_option opt);
@@ -2299,6 +2365,7 @@ struct vers_select_conds_t
 
 struct LEX;
 class Index_hint;
+class Lex_ident_sys;
 
 /*
   @struct TABLE_CHAIN
@@ -2565,9 +2632,18 @@ struct TABLE_LIST
      @note Inside views, a subquery in the @c FROM clause is not allowed.
      @note Do not use this field to separate views/base tables/anonymous
      derived tables. Use TABLE_LIST::is_anonymous_derived_table().
+     @note _column_names_ below are associated with these derived tables
+       SELECT * FROM (SELECT a FROM t1) b (list of column names)
+     @note _original_names_ below are used to save *item_list.name in the
+       select_lex for multiple executions
   */
   st_select_lex_unit *derived;		/* SELECT_LEX_UNIT of derived table */
   With_element *with;          /* With element defining this table (if any) */
+  List<Lex_ident_sys>   *column_names;  /* list of correlation column names */
+  List<Lex_ident_sys>   *original_names;/* list of original column names    */
+  st_select_lex         *original_names_source;
+  bool save_original_names(st_select_lex *derived);
+
   /* Bitmap of the defining with element */
   table_map with_internal_reference_map;
   TABLE_LIST * next_with_rec_ref;

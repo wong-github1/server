@@ -730,6 +730,7 @@ typedef bool Log_func(THD*, TABLE*, Event_log *, binlog_cache_data *, bool,
 #define ALTER_DROP_SYSTEM_VERSIONING (1ULL << 32)
 #define ALTER_ADD_PERIOD             (1ULL << 33)
 #define ALTER_DROP_PERIOD            (1ULL << 34)
+#define ALTER_VERS_EXPLICIT          (1ULL << 35)
 
 /*
   Following defines are used by ALTER_INPLACE_TABLE
@@ -4536,7 +4537,7 @@ public:
     @return The handler error code or zero for success.
   */
   virtual int
-  get_foreign_key_list(const THD *thd, List<FOREIGN_KEY_INFO> *f_key_list)
+  get_foreign_key_list(THD *thd, List<FOREIGN_KEY_INFO> *f_key_list)
   { return 0; }
   /**
     Get the list of foreign keys referencing this table.
@@ -4550,9 +4551,9 @@ public:
     @return The handler error code or zero for success.
   */
   virtual int
-  get_parent_foreign_key_list(const THD *thd, List<FOREIGN_KEY_INFO> *f_key_list)
+  get_parent_foreign_key_list(THD *thd, List<FOREIGN_KEY_INFO> *f_key_list)
   { return 0; }
-  virtual uint referenced_by_foreign_key() { return 0;}
+  virtual bool referenced_by_foreign_key() const noexcept { return false;}
   virtual void init_table_handle_for_HANDLER()
   { return; }       /* prepare InnoDB for HANDLER */
   virtual void free_foreign_key_create_info(char* str) {}

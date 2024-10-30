@@ -208,6 +208,7 @@ enum enum_binlog_row_image {
 #define OLD_MODE_NO_NULL_COLLATION_IDS  (1 << 6)
 #define OLD_MODE_LOCK_ALTER_TABLE_COPY  (1 << 7)
 #define OLD_MODE_OLD_FLUSH_STATUS       (1 << 8)
+#define OLD_MODE_SESSION_USER_IS_USER   (1 << 9)
 
 #define OLD_MODE_DEFAULT_VALUE          OLD_MODE_UTF8_IS_UTF8MB3
 
@@ -780,6 +781,7 @@ typedef struct system_variables
   ulong net_wait_timeout;
   ulong net_write_timeout;
   ulong optimizer_extra_pruning_depth;
+  ulonglong optimizer_join_limit_pref_ratio;
   ulong optimizer_prune_level;
   ulong optimizer_search_depth;
   ulong optimizer_selectivity_sampling_limit;
@@ -3868,7 +3870,7 @@ public:
   ulonglong  tmp_tables_size;
   ulonglong  bytes_sent_old;
   ulonglong  affected_rows;                     /* Number of changed rows */
-  ulonglong  max_tmp_space_used;
+  ulonglong  max_tmp_space_used= 0;
 
   Opt_trace_context opt_trace;
   pthread_t  real_id;                           /* For debugging */
@@ -4676,6 +4678,7 @@ public:
     is_slave_error= 0;
     if (killed == KILL_BAD_DATA)
       reset_killed();
+    my_errno= 0;
     DBUG_VOID_RETURN;
   }
 
@@ -5851,6 +5854,13 @@ public:
   /* Handling of timeouts for commands */
   thr_timer_t query_timer;
 
+  /*
+    Number of strings which were involved in sorting or grouping and whose
+    lengths were truncated according to the max_sort_length system variable
+    setting
+  */
+  ulonglong  num_of_strings_sorted_on_truncated_length;
+
 public:
   void set_query_timer()
   {
@@ -6051,6 +6061,23 @@ public:
   bool need_report_unit_results();
   bool report_collected_unit_results();
   bool init_collecting_unit_results();
+
+  /*
+    Push post-execution warnings, which may be some kinds of aggregate messages
+    like number of times max_sort_length was reached during sorting/grouping
+  */
+  void push_final_warnings()
+  {
+    if (num_of_strings_sorted_on_truncated_length)
+    {
+      push_warning_printf(this, Sql_condition::WARN_LEVEL_WARN,
+                          WARN_SORTING_ON_TRUNCATED_LENGTH,
+                          ER_THD(this, WARN_SORTING_ON_TRUNCATED_LENGTH),
+                          num_of_strings_sorted_on_truncated_length,
+                          variables.max_sort_length);
+      num_of_strings_sorted_on_truncated_length= 0;
+    }
+  }
 };
 
 

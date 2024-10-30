@@ -1795,7 +1795,8 @@ static Sys_var_on_access_global<Sys_var_ulong,
 Sys_max_binlog_size(
        "max_binlog_size",
        "Binary log will be rotated automatically when the size exceeds this "
-       "value",
+       "value, unless `binlog_large_commit_threshold` causes rotation "
+       "prematurely",
        GLOBAL_VAR(max_binlog_size), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(IO_SIZE, 1024*1024L*1024L), DEFAULT(1024*1024L*1024L),
        BLOCK_SIZE(IO_SIZE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
@@ -2177,15 +2178,6 @@ struct gtid_binlog_state_data { rpl_gtid *list; uint32 list_len; };
 bool
 Sys_var_gtid_binlog_state::do_check(THD *thd, set_var *var)
 {
-  String str, *res;
-  struct gtid_binlog_state_data *data;
-  rpl_gtid *list;
-  uint32 list_len;
-
-  DBUG_ASSERT(var->type == OPT_GLOBAL);
-
-  if (!(res= var->value->val_str(&str)))
-    return true;
   if (thd->in_active_multi_stmt_transaction())
   {
     my_error(ER_CANT_DO_THIS_DURING_AN_TRANSACTION, MYF(0));
@@ -2201,6 +2193,31 @@ Sys_var_gtid_binlog_state::do_check(THD *thd, set_var *var)
     my_error(ER_BINLOG_MUST_BE_EMPTY, MYF(0));
     return true;
   }
+  return false;
+}
+
+
+bool
+Sys_var_gtid_binlog_state::global_update(THD *thd, set_var *var)
+{
+  DBUG_ASSERT(var->type == OPT_GLOBAL);
+
+  if (!var->value)
+  {
+    my_error(ER_NO_DEFAULT, MYF(0), var->var->name.str);
+    return true;
+  }
+
+  bool result;
+  String str, *res;
+  struct gtid_binlog_state_data *data;
+  rpl_gtid *list;
+  uint32 list_len;
+
+  DBUG_ASSERT(var->type == OPT_GLOBAL);
+
+  if (!(res= var->value->val_str(&str)))
+    return true;
   if (res->length() == 0)
   {
     list= NULL;
@@ -2222,31 +2239,13 @@ Sys_var_gtid_binlog_state::do_check(THD *thd, set_var *var)
   data->list= list;
   data->list_len= list_len;
   var->save_result.ptr= data;
-  return false;
-}
-
-
-bool
-Sys_var_gtid_binlog_state::global_update(THD *thd, set_var *var)
-{
-  bool res;
-
-  DBUG_ASSERT(var->type == OPT_GLOBAL);
-
-  if (!var->value)
-  {
-    my_error(ER_NO_DEFAULT, MYF(0), var->var->name.str);
-    return true;
-  }
-
-  struct gtid_binlog_state_data *data=
-    (struct gtid_binlog_state_data *)var->save_result.ptr;
+  
   mysql_mutex_unlock(&LOCK_global_system_variables);
-  res= (reset_master(thd, data->list, data->list_len, 0) != 0);
+  result= (reset_master(thd, data->list, data->list_len, 0) != 0);
   mysql_mutex_lock(&LOCK_global_system_variables);
   my_free(data->list);
   my_free(data);
-  return res;
+  return result;
 }
 
 
@@ -2905,6 +2904,20 @@ static Sys_var_ulong Sys_optimizer_selectivity_sampling_limit(
        VALID_RANGE(SELECTIVITY_SAMPLING_THRESHOLD, UINT_MAX),
        DEFAULT(SELECTIVITY_SAMPLING_LIMIT), BLOCK_SIZE(1));
 
+static Sys_var_ulonglong Sys_optimizer_join_limit_pref_ratio(
+       "optimizer_join_limit_pref_ratio",
+       "For queries with JOIN and ORDER BY LIMIT : make the optimizer "
+       "consider a join order that allows to short-cut execution after "
+       "producing #LIMIT matches if that promises N times speedup. "
+       "(A conservative setting here would be is a high value, like 100 so "
+       "the short-cutting plan is used if it promises a speedup of 100x or "
+       "more). Short-cutting plans are inherently risky so the default is 0 "
+       "which means do not consider this optimization",
+       SESSION_VAR(optimizer_join_limit_pref_ratio),
+       CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(0, UINT_MAX),
+       DEFAULT(0), BLOCK_SIZE(1));
+
 static Sys_var_ulong Sys_optimizer_use_condition_selectivity(
        "optimizer_use_condition_selectivity",
        "Controls selectivity of which conditions the optimizer takes into "
@@ -3255,7 +3268,10 @@ static Sys_var_ulonglong Sys_thread_stack(
        BLOCK_SIZE(1024));
 
 static Sys_var_charptr_fscs Sys_tmpdir(
-       "tmpdir", "Path for temporary files. Several paths may "
+       "tmpdir",
+       "Path for temporary files. Files that are created in background for "
+       "binlogging by user threads are placed in a separate location "
+       "(see `binlog_large_commit_threshold` option). Several paths may "
        "be specified, separated by a "
 #if defined(_WIN32)
        "semicolon (;)"
@@ -3980,6 +3996,7 @@ static const char *old_mode_names[]=
   "NO_NULL_COLLATION_IDS",              // 6: deprecated since 11.3
   "LOCK_ALTER_TABLE_COPY",              // 7: deprecated since 11.3
   "OLD_FLUSH_STATUS",                   // 8: deprecated since 11.5
+  "SESSION_USER_IS_USER",               // 9: deprecated since 11.7
   0
 };
 
@@ -4002,6 +4019,9 @@ static bool old_mode_deprecated(sys_var *self, THD *thd, set_var *var)
   for (; i <= 8; i++)
     if ((1ULL<<i) & v)
       warn_deprecated<1105>(thd, old_mode_names[i]);
+  for (; i <= 9; i++)
+    if ((1ULL<<i) & v)
+      warn_deprecated<1107>(thd, old_mode_names[i]);
   return false;
 }
 
@@ -4214,7 +4234,8 @@ static Sys_var_on_access_global<Sys_var_enum,
                                 PRIV_SET_SYSTEM_GLOBAL_VAR_THREAD_POOL>
 Sys_threadpool_mode(
   "thread_pool_mode",
-  "Chose implementation of the threadpool",
+  "Chose implementation of the threadpool. Use 'windows' unless you have a "
+  "workload with a lot of concurrent connections and minimal contention",
   READ_ONLY GLOBAL_VAR(threadpool_mode), CMD_LINE(REQUIRED_ARG),
   threadpool_mode_names, DEFAULT(TP_MODE_WINDOWS)
   );
@@ -7391,6 +7412,29 @@ static Sys_var_enum Sys_block_encryption_mode(
   "AES_ENCRYPT() and AES_DECRYPT() functions",
   SESSION_VAR(block_encryption_mode), CMD_LINE(REQUIRED_ARG),
   block_encryption_mode_values, DEFAULT(0));
+
+extern ulonglong opt_binlog_commit_by_rotate_threshold;
+static Sys_var_ulonglong Sys_binlog_large_commit_threshold(
+  "binlog_large_commit_threshold",
+  "Increases transaction concurrency for large transactions (i.e. "
+  "those with sizes larger than this value) by using the large "
+  "transaction's cache file as a new binary log, and rotating the "
+  "active binary log to the large transaction's cache file at commit "
+  "time. This avoids the default commit logic that copies the "
+  "transaction cache data to the end of the active binary log file "
+  "while holding a lock that prevents other transactions from "
+  "binlogging",
+  GLOBAL_VAR(opt_binlog_commit_by_rotate_threshold),
+  CMD_LINE(REQUIRED_ARG),
+
+#ifndef DBUG_OFF
+  // Allow a smaller minimum value for debug builds to help with testing
+  VALID_RANGE(100 * 1024, ULLONG_MAX),
+#else
+  VALID_RANGE(10 * 1024 * 1024, ULLONG_MAX),
+#endif
+
+  DEFAULT(128 * 1024 * 1024), BLOCK_SIZE(1));
 
 static void sysvar_path_freeup(char **tokens, int count)
 {

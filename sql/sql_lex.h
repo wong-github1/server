@@ -317,11 +317,13 @@ typedef struct st_lex_server_options
 {
   long port;
   LEX_CSTRING server_name, host, db, username, password, scheme, socket, owner;
+  engine_option_value *option_list;
   void reset(LEX_CSTRING name)
   {
     server_name= name;
     host= db= username= password= scheme= socket= owner= null_clex_str;
     port= -1;
+    option_list= NULL;
   }
 } LEX_SERVER_OPTIONS;
 
@@ -803,6 +805,8 @@ public:
   bool is_view:1;
   bool describe:1; /* union exec() called for EXPLAIN */
   bool columns_are_renamed:1;
+  inline bool rename_item_list(TABLE_LIST *derived_arg);
+  inline bool rename_types_list(List<Lex_ident_sys> *new_names);
 
 protected:
   /* This is bool, not bit, as it's used and set in many places */
@@ -900,6 +904,7 @@ public:
   bool check_parameters(SELECT_LEX *main_select);
 
   bool set_lock_to_the_last_select(Lex_select_lock l);
+  void print_lock_from_the_last_select(String *str);
 
   bool can_be_merged();
 
@@ -1052,6 +1057,7 @@ public:
   */
   List<Item_func_in> in_funcs;
   List<TABLE_LIST> leaf_tables;
+  /* Saved leaf tables for subsequent executions */
   List<TABLE_LIST> leaf_tables_exec;
   List<TABLE_LIST> leaf_tables_prep;
 
@@ -1321,7 +1327,7 @@ public:
   List<Item>* get_item_list();
   bool save_item_list_names(THD *thd);
   void restore_item_list_names();
-
+  bool set_item_list_names( List<Lex_ident_sys> *overwrite );
   ulong get_table_join_options();
   void set_lock_for_tables(thr_lock_type lock_type, bool for_update,
                            bool skip_locks);
@@ -1362,6 +1368,7 @@ public:
   bool setup_ref_array(THD *thd, uint order_group_num);
   uint get_cardinality_of_ref_ptrs_slice(uint order_group_num_arg);
   void print(THD *thd, String *str, enum_query_type query_type);
+  void print_lock_type(String *str);
   void print_item_list(THD *thd, String *str, enum_query_type query_type);
   void print_set_clause(THD *thd, String *str, enum_query_type query_type);
   void print_on_duplicate_key_clause(THD *thd, String *str,
@@ -3778,6 +3785,9 @@ public:
   bool sp_param_fill_definition(sp_variable *spvar,
                                 const Lex_field_type_st &def);
   bool sf_return_fill_definition(const Lex_field_type_st &def);
+  bool sf_return_fill_definition_row(Row_definition_list *def);
+  bool sf_return_fill_definition_rowtype_of(const Qualified_column_ident &col);
+  bool sf_return_fill_definition_type_of(const Qualified_column_ident &col);
 
   int case_stmt_action_then();
   bool setup_select_in_parentheses();
@@ -4415,7 +4425,11 @@ public:
   }
   bool add_alter_list(LEX_CSTRING par_name, Virtual_column_info *expr,
                       bool par_exists);
-  bool add_alter_list(LEX_CSTRING name, LEX_CSTRING new_name, bool exists);
+  bool add_alter_list(LEX_CSTRING name, LEX_CSTRING new_name, bool exists)
+  {
+    return alter_info.add_alter_list(thd, name, new_name, exists);
+  }
+
   bool add_alter_list_item_convert_to_charset(Sql_used *used,
                                               const Charset_collation_map_st &map,
                                               CHARSET_INFO *cs)
@@ -4726,7 +4740,8 @@ public:
   SELECT_LEX *parsed_TVC_end();
   TABLE_LIST *parsed_derived_table(SELECT_LEX_UNIT *unit,
                                    int for_system_time,
-                                   LEX_CSTRING *alias);
+                                   LEX_CSTRING *alias,
+                                   List<Lex_ident_sys> *column_names= nullptr);
   bool parsed_create_view(SELECT_LEX_UNIT *unit, int check);
   bool select_finalize(st_select_lex_unit *expr);
   bool select_finalize(st_select_lex_unit *expr, Lex_select_lock l);

@@ -120,7 +120,7 @@
 #include "sp_cache.h"
 #include "sql_reload.h"  // reload_acl_and_cache
 #include "sp_head.h"  // init_sp_psi_keys
-
+#include "log_cache.h"
 #include <mysqld_default_groups.h>
 
 #ifdef HAVE_POLL_H
@@ -209,7 +209,7 @@ typedef fp_except fp_except_t;
 
 inline void setup_fpu()
 {
-#if defined(__FreeBSD__) && defined(HAVE_IEEEFP_H) && !defined(HAVE_FEDISABLEEXCEPT)
+#if defined(__FreeBSD__) && defined(HAVE_IEEEFP_H) && !defined(HAVE_FEDISABLEEXCEPT) && defined(FP_X_INV)
   /* We can't handle floating point exceptions with threads, so disable
      this on freebsd
      Don't fall for overflow, underflow,divide-by-zero or loss of precision.
@@ -222,7 +222,7 @@ inline void setup_fpu()
   fpsetmask(~(FP_X_INV |             FP_X_OFL | FP_X_UFL | FP_X_DZ |
               FP_X_IMP));
 #endif /* FP_X_DNML */
-#endif /* __FreeBSD__ && HAVE_IEEEFP_H && !HAVE_FEDISABLEEXCEPT */
+#endif /* __FreeBSD__ && HAVE_IEEEFP_H && !HAVE_FEDISABLEEXCEPT && FP_X_INV */
 
 #ifdef HAVE_FEDISABLEEXCEPT
   fedisableexcept(FE_ALL_EXCEPT);
@@ -3572,6 +3572,7 @@ SHOW_VAR com_status_vars[]= {
   {"show_create_package",  STMT_STATUS(SQLCOM_SHOW_CREATE_PACKAGE)},
   {"show_create_package_body",STMT_STATUS(SQLCOM_SHOW_CREATE_PACKAGE_BODY)},
   {"show_create_proc",     STMT_STATUS(SQLCOM_SHOW_CREATE_PROC)},
+  {"show_create_server",   STMT_STATUS(SQLCOM_SHOW_CREATE_SERVER)},
   {"show_create_table",    STMT_STATUS(SQLCOM_SHOW_CREATE)},
   {"show_create_trigger",  STMT_STATUS(SQLCOM_SHOW_CREATE_TRIGGER)},
   {"show_create_user",     STMT_STATUS(SQLCOM_SHOW_CREATE_USER)},
@@ -5616,6 +5617,9 @@ static int init_server_components()
       unireg_abort(1);
   }
 
+  if (unlikely(init_binlog_cache_dir()))
+    unireg_abort(1);
+
 #ifdef HAVE_REPLICATION
   binlog_space_limit= internal_binlog_space_limit;
   slave_connections_needed_for_purge=
@@ -6505,7 +6509,9 @@ void handle_connections_sockets()
                                     &length);
       if (mysql_socket_getfd(new_sock) != INVALID_SOCKET)
         handle_accepted_socket(new_sock, sock);
-      else if (socket_errno != SOCKET_EINTR && socket_errno != SOCKET_EAGAIN)
+      else if (socket_errno == SOCKET_EAGAIN || socket_errno == SOCKET_EWOULDBLOCK)
+        break;
+      else if (socket_errno != SOCKET_EINTR)
       {
         /*
           accept(2) failed on the listening port.

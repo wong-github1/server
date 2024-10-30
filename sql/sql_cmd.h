@@ -20,6 +20,8 @@
 #ifndef SQL_CMD_INCLUDED
 #define SQL_CMD_INCLUDED
 
+#include "my_base.h"
+
 /*
   When a command is added here, be sure it's also added in mysqld.cc
   in "struct show_var_st status_vars[]= {" ...
@@ -109,6 +111,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_STATUS_PACKAGE_BODY,
   SQLCOM_SHOW_PACKAGE_BODY_CODE,
   SQLCOM_BACKUP, SQLCOM_BACKUP_LOCK,
+  SQLCOM_SHOW_CREATE_SERVER,
 
   /*
     When a command is added here, be sure it's also added in mysqld.cc
@@ -324,10 +327,12 @@ public:
 
   select_result *get_result() { return result; }
 
+  ha_rows get_scanned_rows() { return scanned_rows; }
+
 protected:
   Sql_cmd_dml()
       : Sql_cmd(), lex(nullptr), result(nullptr),
-        m_empty_query(false)
+        m_empty_query(false), scanned_rows(0)
   {}
 
   /**
@@ -394,6 +399,7 @@ protected:
   LEX *lex;              /**< Pointer to LEX for this statement */
   select_result *result; /**< Pointer to object for handling of the result */
   bool m_empty_query;    /**< True if query will produce no rows */
+  ha_rows scanned_rows; /**< Number of scanned rows */
 };
 
 

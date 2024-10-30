@@ -17,7 +17,6 @@
 #define MYSQL_SERVER 1
 #include <my_global.h>
 #include "mysql_version.h"
-#include "spd_environ.h"
 #include "sql_priv.h"
 #include "probes_mysql.h"
 #include "my_getopt.h"
@@ -946,6 +945,7 @@ int spider_free_share_alloc(
   DBUG_RETURN(0);
 }
 
+/* Free a tmp_share, which has only one link */
 void spider_free_tmp_share_alloc(
   SPIDER_SHARE *share
 ) {
@@ -5892,6 +5892,7 @@ int spider_open_all_tables(
   THD *thd = trx->thd;
   TABLE *table_tables;
   int error_num, *need_mon, mon_val;
+  /* This share has only one link */
   SPIDER_SHARE tmp_share;
   char *db_name, *table_name;
   uint db_name_length, table_name_length;
@@ -5973,9 +5974,6 @@ int spider_open_all_tables(
         table_name_length
       )) ||
       (error_num = spider_create_conn_keys(&tmp_share)) ||
-/*
-      (error_num = spider_db_create_table_names_str(&tmp_share)) ||
-*/
       (error_num = spider_create_tmp_dbton_share(&tmp_share))
     ) {
       spider_sys_index_end(table_tables);
@@ -5998,22 +5996,10 @@ int spider_open_all_tables(
     }
     conn->error_mode &= spider_param_error_read_mode(thd, 0);
     conn->error_mode &= spider_param_error_write_mode(thd, 0);
-    pthread_mutex_assert_not_owner(&conn->mta_conn_mutex);
-    pthread_mutex_lock(&conn->mta_conn_mutex);
-    SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
-    conn->need_mon = &mon_val;
-    DBUG_ASSERT(!conn->mta_conn_mutex_lock_already);
-    DBUG_ASSERT(!conn->mta_conn_mutex_unlock_later);
-    conn->mta_conn_mutex_lock_already = TRUE;
-    conn->mta_conn_mutex_unlock_later = TRUE;
+    spider_lock_before_query(conn, &mon_val);
     if ((error_num = spider_db_before_query(conn, &mon_val)))
     {
-      DBUG_ASSERT(conn->mta_conn_mutex_lock_already);
-      DBUG_ASSERT(conn->mta_conn_mutex_unlock_later);
-      conn->mta_conn_mutex_lock_already = FALSE;
-      conn->mta_conn_mutex_unlock_later = FALSE;
-      SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
-      pthread_mutex_unlock(&conn->mta_conn_mutex);
+      spider_unlock_after_query(conn, 0);
       spider_sys_index_end(table_tables);
       spider_sys_close_table(thd, &open_tables_backup);
       spider_free_tmp_dbton_share(&tmp_share);
@@ -6021,12 +6007,7 @@ int spider_open_all_tables(
       free_root(&mem_root, MYF(0));
       DBUG_RETURN(error_num);
     }
-    DBUG_ASSERT(conn->mta_conn_mutex_lock_already);
-    DBUG_ASSERT(conn->mta_conn_mutex_unlock_later);
-    conn->mta_conn_mutex_lock_already = FALSE;
-    conn->mta_conn_mutex_unlock_later = FALSE;
-    SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
-    pthread_mutex_unlock(&conn->mta_conn_mutex);
+    spider_unlock_after_query(conn, 0);
 
     if (lock && spider_param_use_snapshot_with_flush_tables(thd) == 2)
     {
@@ -7368,6 +7349,10 @@ bool spider_check_pk_update(
   DBUG_RETURN(FALSE);
 }
 
+/*
+  Set fields of a tmp share which has only one link. For use in
+  monitoring, spider_copy_tables udf etc.
+*/
 void spider_set_tmp_share_pointer(
   SPIDER_SHARE *tmp_share,
   char **tmp_connect_info,

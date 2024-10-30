@@ -562,14 +562,14 @@ bool LEX::add_alter_list(LEX_CSTRING name, Virtual_column_info *expr,
   return false;
 }
 
-
-bool LEX::add_alter_list(LEX_CSTRING name, LEX_CSTRING new_name, bool exists)
+bool Alter_info::add_alter_list(THD *thd, LEX_CSTRING name,
+                                LEX_CSTRING new_name, bool exists)
 {
   Alter_column *ac= new (thd->mem_root) Alter_column(name, new_name, exists);
   if (unlikely(ac == NULL))
     return true;
-  alter_info.alter_list.push_back(ac, thd->mem_root);
-  alter_info.flags|= ALTER_RENAME_COLUMN;
+  alter_list.push_back(ac, thd->mem_root);
+  flags|= ALTER_RENAME_COLUMN;
   return false;
 }
 
@@ -3606,6 +3606,42 @@ List<Item>* st_select_lex::get_item_list()
 }
 
 
+/**
+  @brief
+    Replace the name of each item in the item_list with a new name.
+
+  @param
+    new_names     pointer to a List of Lex_ident_sys from which replacement
+    names are taken.
+
+  @details
+    This is used in derived tables to optionally set the names in the item_list.
+    Usually called in unit::prepare().
+
+  @retval
+    true:  an error occurred
+    false: success
+*/
+
+bool st_select_lex::set_item_list_names(List<Lex_ident_sys> *new_names)
+{
+  if (item_list.elements != new_names->elements)
+  {
+    my_error(ER_INCORRECT_COLUMN_NAME_COUNT, MYF(0));
+    return true;
+  }
+
+  List_iterator<Lex_ident_sys> it(*new_names);
+  List_iterator_fast<Item> li(item_list);
+  Item *item;
+
+  while ((item= li++))
+    lex_string_set( &item->name, (it++)->str);
+
+  return false;
+}
+
+
 uint st_select_lex::get_cardinality_of_ref_ptrs_slice(uint order_group_num_arg)
 {
   if (!((options & SELECT_DISTINCT) && !group_list.elements))
@@ -3794,6 +3830,8 @@ void st_select_lex_unit::print(String *str, enum_query_type query_type)
   }
   else if (saved_fake_select_lex)
     saved_fake_select_lex->print_limit(thd, str, query_type);
+
+  print_lock_from_the_last_select(str);
 }
 
 
@@ -6521,6 +6559,46 @@ bool LEX::sf_return_fill_definition(const Lex_field_type_st &def)
 }
 
 
+bool LEX::sf_return_fill_definition_row(Row_definition_list *def)
+{
+  sphead->m_return_field_def.set_row_field_definitions(def);
+  return sphead->fill_spvar_definition(thd, &sphead->m_return_field_def) ||
+         sphead->row_fill_field_definitions(thd, def);
+}
+
+
+bool
+LEX::sf_return_fill_definition_rowtype_of(const Qualified_column_ident &ref)
+{
+  // RETURN xxx.yyy.zzz%ROWTYPE is not possible in the grammar
+  DBUG_ASSERT(!ref.db.str);
+
+  // Make sure sp_rcontext is created using the invoker security context:
+  sphead->m_flags|= sp_head::HAS_COLUMN_TYPE_REFS;
+  Table_ident *table_ref;
+  if (unlikely(!(table_ref= new (thd->mem_root)
+                            Table_ident(thd, &ref.table, &ref.m_column,
+                                        false))))
+    return true;
+  sphead->m_return_field_def.set_table_rowtype_ref(table_ref);
+  return sphead->fill_spvar_definition(thd, &sphead->m_return_field_def);
+}
+
+
+bool LEX::sf_return_fill_definition_type_of(const Qualified_column_ident &ref)
+{
+  DBUG_ASSERT(ref.table.str);
+  DBUG_ASSERT(ref.m_column.str);
+  // Make sure sp_rcontext is created using the invoker security context:
+  sphead->m_flags|= sp_head::HAS_COLUMN_TYPE_REFS;
+  Qualified_column_ident *ref2;
+  if (unlikely(!(ref2= new (thd->mem_root)  Qualified_column_ident(ref))))
+    return true;
+  sphead->m_return_field_def.set_column_type_ref(ref2);
+  return false;
+}
+
+
 void LEX::set_stmt_init()
 {
   sql_command= SQLCOM_SET_OPTION;
@@ -7535,7 +7613,9 @@ sp_head *LEX::make_sp_head(THD *thd, const sp_name *name,
   sp_head *sp;
 
   /* Order is important here: new - reset - init */
-  if (likely((sp= sp_head::create(package, sph, agg_type, sp_mem_root_ptr))))
+  if (likely((sp= sp_head::create(package, sph, agg_type,
+                                  thd->variables.sql_mode,
+                                  sp_mem_root_ptr))))
   {
     sp->reset_thd_mem_root(thd);
     sp->init(this);
@@ -9514,6 +9594,7 @@ sp_package *LEX::create_package_start(THD *thd,
     }
   }
   if (unlikely(!(pkg= sp_package::create(this, name_arg, sph,
+                                         thd->variables.sql_mode,
                                          sp_mem_root_ptr))))
     return NULL;
   pkg->reset_thd_mem_root(thd);
@@ -9575,7 +9656,7 @@ Item *LEX::make_item_func_sysdate(THD *thd, uint fsp)
   set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
   Item *item= global_system_variables.sysdate_is_now == 0 ?
               (Item *) new (thd->mem_root) Item_func_sysdate_local(thd, fsp) :
-              (Item *) new (thd->mem_root) Item_func_now_local(thd, fsp);
+              (Item *) new (thd->mem_root) Item_func_current_timestamp(thd, fsp);
   if (unlikely(item == NULL))
     return NULL;
   safe_to_cache_query=0;
@@ -10703,7 +10784,8 @@ SELECT_LEX *LEX::parsed_TVC_end()
 
 TABLE_LIST *LEX::parsed_derived_table(SELECT_LEX_UNIT *unit,
                                      int for_system_time,
-                                     LEX_CSTRING *alias)
+                                     LEX_CSTRING *alias,
+                                     List<Lex_ident_sys> *column_names)
 {
   TABLE_LIST *res;
   derived_tables|= DERIVED_SUBQUERY;
@@ -10723,6 +10805,15 @@ TABLE_LIST *LEX::parsed_derived_table(SELECT_LEX_UNIT *unit,
   if (for_system_time)
   {
     res->vers_conditions= vers_conditions;
+  }
+
+  if (column_names && column_names->elements > 0)
+  {
+    res->column_names= column_names;
+    // pre-allocate space to save item_list names
+    res->original_names= new (thd->mem_root) List<Lex_ident_sys>;
+    for (uint i= 0; i < column_names->elements; i++)
+      res->original_names->push_back( new Lex_ident_sys );
   }
   return res;
 }
@@ -10817,6 +10908,22 @@ bool SELECT_LEX_UNIT::set_lock_to_the_last_select(Lex_select_lock l)
   }
   return FALSE;
 }
+
+
+void SELECT_LEX_UNIT::print_lock_from_the_last_select(String *str)
+{
+  SELECT_LEX *sel= first_select();
+  while (sel->next_select())
+    sel= sel->next_select();
+  if(sel->braces)
+    return; // braces processed in st_select_lex::print
+
+  // lock type
+  sel->print_lock_type(str);
+
+  return;
+}
+
 
 /**
   Generate unique name for generated derived table for this SELECT

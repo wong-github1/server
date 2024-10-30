@@ -47,6 +47,7 @@
 #include "sql_derived.h"
 #include "sql_statistics.h"
 #include "sql_connect.h"
+#include "sql_servers.h"
 #include "sql_repl.h"                       // rpl_load_gtid_state
 #include "rpl_mi.h"                         // master_info_index
 #include "authors.h"
@@ -1522,6 +1523,61 @@ bool mysqld_show_create_db(THD *thd, LEX_CSTRING *dbname,
   DBUG_RETURN(FALSE);
 }
 
+bool mysql_show_create_server(THD *thd, LEX_CSTRING *name)
+{
+  MEM_ROOT *mem_root= thd->mem_root;
+  FOREIGN_SERVER *server, server_buf;
+  Protocol *protocol=thd->protocol;
+  List<Item> field_list;
+  char buff[4096];
+  String buffer(buff, sizeof(buff), system_charset_info);
+  DBUG_ENTER("mysql_show_create_server");
+  if (!(server= get_server_by_name(mem_root, name->str, &server_buf)))
+  {
+    my_error(ER_FOREIGN_SERVER_DOESNT_EXIST, MYF(0), name->str);
+    DBUG_RETURN(TRUE);
+  }
+  field_list.push_back(new (mem_root)
+                        Item_empty_string(thd, "Server", NAME_CHAR_LEN),
+                        mem_root);
+  field_list.push_back(new (mem_root)
+                        Item_empty_string(thd, "Create Server", 1024),
+                        mem_root);
+
+  if (protocol->send_result_set_metadata(&field_list,
+                                         Protocol::SEND_NUM_ROWS |
+                                         Protocol::SEND_EOF))
+    DBUG_RETURN(TRUE);
+
+  protocol->prepare_for_resend();
+  protocol->store(name->str, name->length, system_charset_info);
+  buffer.length(0);
+  buffer.append(STRING_WITH_LEN("CREATE SERVER "));
+  append_identifier(thd, &buffer, name);
+  buffer.append(STRING_WITH_LEN(" FOREIGN DATA WRAPPER "));
+  buffer.append(server->scheme, strlen(server->scheme));
+  buffer.append(STRING_WITH_LEN(" OPTIONS ("));
+  engine_option_value* option= server->option_list;
+  bool first= true;
+  while (option)
+  {
+    if (!first)
+      buffer.append(STRING_WITH_LEN(", "));
+    buffer.append(option->name);
+    buffer.append(STRING_WITH_LEN(" "));
+    append_unescaped(&buffer, option->value.str, option->value.length);
+    first= false;
+    option= option->next;
+  }
+  buffer.append(STRING_WITH_LEN(");"));
+  protocol->store(buffer.ptr(), buffer.length(), buffer.charset());
+
+  if (protocol->write())
+    DBUG_RETURN(TRUE);
+
+  my_eof(thd);
+  DBUG_RETURN(FALSE);
+}
 
 
 /****************************************************************************
@@ -6195,16 +6251,19 @@ static void store_column_type(TABLE *table, Field *field, CHARSET_INFO *cs,
   Information_schema_numeric_attributes num=
     field->information_schema_numeric_attributes();
 
-  switch (field->type()) {
-  case MYSQL_TYPE_TIME:
-  case MYSQL_TYPE_TIMESTAMP:
-  case MYSQL_TYPE_DATETIME:
-    /* DATETIME_PRECISION column */
-    table->field[offset + 5]->store((longlong) field->decimals(), TRUE);
-    table->field[offset + 5]->set_notnull();
-    break;
-  default:
-    break;
+  if (field->cmp_type() == TIME_RESULT)
+  {
+    switch (field->type()) {
+    case MYSQL_TYPE_TIME:
+    case MYSQL_TYPE_TIMESTAMP:
+    case MYSQL_TYPE_DATETIME:
+      /* DATETIME_PRECISION column */
+      table->field[offset + 5]->store((longlong) field->decimals(), TRUE);
+      table->field[offset + 5]->set_notnull();
+      break;
+    default:
+      break;
+    }
   }
 
   /* NUMERIC_PRECISION column */
@@ -6285,15 +6344,17 @@ static bool print_anchor_dtd_identifier(THD *thd, const Spvar_definition *def,
 /*
   Set columns DATA_TYPE and DTD_IDENTIFIER from an SP variable definition
 */
-static void store_variable_type(THD *thd, const sp_variable *spvar,
+static void store_variable_type(THD *thd,
+                                const Spvar_definition &def,
+                                const Lex_ident_column &name,
                                 TABLE *tmptbl,
                                 TABLE_SHARE *tmpshare,
                                 CHARSET_INFO *cs,
                                 TABLE *table, uint offset)
 {
-  if (spvar->field_def.is_explicit_data_type())
+  if (def.is_explicit_data_type())
   {
-    if (spvar->field_def.is_row())
+    if (def.is_row())
     {
       // Explicit ROW
       table->field[offset]->store(STRING_WITH_LEN("ROW"), cs);
@@ -6305,8 +6366,7 @@ static void store_variable_type(THD *thd, const sp_variable *spvar,
     else
     {
       // Explicit scalar data type
-      Field *field= spvar->field_def.make_field(tmpshare, thd->mem_root,
-                                                &spvar->name);
+      Field *field= def.make_field(tmpshare, thd->mem_root, &name);
       field->table= tmptbl;
       tmptbl->in_use= thd;
       store_column_type(table, field, cs, offset);
@@ -6316,7 +6376,7 @@ static void store_variable_type(THD *thd, const sp_variable *spvar,
   {
     StringBuffer<128> data_type(cs), dtd_identifier(cs);
 
-    if (print_anchor_data_type(&spvar->field_def, &data_type))
+    if (print_anchor_data_type(&def, &data_type))
     {
       table->field[offset]->store(STRING_WITH_LEN("ERROR"), cs); // EOM?
       table->field[offset]->set_notnull();
@@ -6328,7 +6388,7 @@ static void store_variable_type(THD *thd, const sp_variable *spvar,
       table->field[offset]->set_notnull();
     }
 
-    if (print_anchor_dtd_identifier(thd, &spvar->field_def, &dtd_identifier))
+    if (print_anchor_dtd_identifier(thd, &def, &dtd_identifier))
     {
       table->field[offset + 8]->store(STRING_WITH_LEN("ERROR"), cs); // EOM?
       table->field[offset + 8]->set_notnull();
@@ -6934,7 +6994,6 @@ int store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
                                           &free_sp_head);
   if (sp)
   {
-    Field *field;
     LEX_CSTRING tmp_string;
     Sql_mode_save sql_mode_backup(thd);
     thd->variables.sql_mode= sql_mode;
@@ -6949,11 +7008,9 @@ int store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
       proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_str_nopad(thd->mem_root,
                                                               &tmp_string);
       table->field[15]->store(tmp_string, cs);
-      field= sp->m_return_field_def.make_field(&share, thd->mem_root,
-                                               &empty_clex_str);
-      field->table= &tbl;
-      tbl.in_use= thd;
-      store_column_type(table, field, cs, 6);
+      store_variable_type(thd, sp->m_return_field_def,
+                          ""_Lex_ident_column,
+                          &tbl, &share, cs, table, 6);
       if (schema_table_store_record(thd, table))
       {
         free_table_share(&share);
@@ -6997,7 +7054,8 @@ int store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
                                                               &tmp_string);
       table->field[15]->store(tmp_string, cs);
 
-      store_variable_type(thd, spvar, &tbl, &share, cs, table, 6);
+      store_variable_type(thd, spvar->field_def, spvar->name,
+                          &tbl, &share, cs, table, 6);
       if (schema_table_store_record(thd, table))
       {
         error= 1;
@@ -7081,16 +7139,12 @@ int store_schema_proc(THD *thd, TABLE *table, TABLE *proc_table,
           char path[FN_REFLEN];
           TABLE_SHARE share;
           TABLE tbl;
-          Field *field;
 
           bzero((char*) &tbl, sizeof(TABLE));
           (void) build_table_filename(path, sizeof(path), "", "", "", 0);
           init_tmp_table_share(thd, &share, "", 0, "", path);
-          field= sp->m_return_field_def.make_field(&share, thd->mem_root,
-                                                   &empty_clex_str);
-          field->table= &tbl;
-          tbl.in_use= thd;
-          store_column_type(table, field, cs, 5);
+          store_variable_type(thd, sp->m_return_field_def,
+                              ""_Lex_ident_column, &tbl, &share, cs, table, 5);
           free_table_share(&share);
           if (free_sp_head)
             sp_head::destroy(sp);
@@ -10058,7 +10112,7 @@ ST_FIELD_INFO stat_fields_info[]=
   Column("NON_UNIQUE",    SLonglong(1),NOT_NULL, "Non_unique",  OPEN_FRM_ONLY),
   Column("INDEX_SCHEMA",  Name(),      NOT_NULL,                OPEN_FRM_ONLY),
   Column("INDEX_NAME",    Name(),      NOT_NULL, "Key_name",    OPEN_FRM_ONLY),
-  Column("SEQ_IN_INDEX",  SLonglong(2),NOT_NULL, "Seq_in_index",OPEN_FRM_ONLY),
+  Column("SEQ_IN_INDEX",  ULong(2),    NOT_NULL, "Seq_in_index",OPEN_FRM_ONLY),
   Column("COLUMN_NAME",   Name(),      NOT_NULL, "Column_name", OPEN_FRM_ONLY),
   Column("COLLATION",     Varchar(1),  NULLABLE, "Collation",   OPEN_FULL_TABLE),
   Column("CARDINALITY",   SLonglong(), NULLABLE, "Cardinality", OPEN_FULL_TABLE),

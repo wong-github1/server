@@ -1738,8 +1738,9 @@ static struct my_option my_long_options[] =
   {"force", 'f',
     "Continue even if we get an SQL error. Sets abort-source-on-error to 0",
     &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"host", 'h', "Connect to host.", &current_host,
-   &current_host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"host", 'h', "Connect to host. Defaults in the following order: "
+  "$MARIADB_HOST, $MYSQL_HOST, and then localhost",
+   &current_host, &current_host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"html", 'H', "Produce HTML output.", &opt_html, &opt_html,
    0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"ignore-spaces", 'i', "Ignore space after function names.",
@@ -1823,7 +1824,8 @@ static struct my_option my_long_options[] =
    "if the output is suspended. Doesn't use history file.",
    &quick, &quick, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"quick-max-column-width", 0,
-   "Maximal field length limit in case of --qick", &quick_max_column_width,
+   "Maximum number of characters displayed in a column header"
+   " when using --quick", &quick_max_column_width,
    &quick_max_column_width, 0, GET_ULONG, REQUIRED_ARG, LONG_MAX, 0, ULONG_MAX,
    0, 1, 0},
   {"raw", 'r', "Write fields without conversion. Used with --batch.",
@@ -2126,7 +2128,10 @@ static int get_options(int argc, char **argv)
   int ho_error;
   MYSQL_PARAMETERS *mysql_params= mysql_get_parameters();
 
-  tmp= (char *) getenv("MYSQL_HOST");
+  //MARIADB_HOST will be preferred over MYSQL_HOST.
+  tmp= getenv("MARIADB_HOST");
+  if (tmp == NULL)
+    tmp= getenv("MYSQL_HOST");
   if (tmp)
     current_host= my_strdup(PSI_NOT_INSTRUMENTED, tmp, MYF(MY_WME));
 

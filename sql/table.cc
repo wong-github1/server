@@ -296,17 +296,6 @@ const char *fn_frm_ext(const char *name)
 TABLE_CATEGORY get_table_category(const Lex_ident_db &db,
                                   const Lex_ident_table &name)
 {
-#ifdef WITH_WSREP
-  if (db.str && db.streq(MYSQL_SCHEMA_NAME))
-  {
-    if (name.streq(Lex_ident_table{STRING_WITH_LEN(WSREP_STREAMING_TABLE)}) ||
-        name.streq(Lex_ident_table{STRING_WITH_LEN(WSREP_CLUSTER_TABLE)}) ||
-        name.streq(Lex_ident_table{STRING_WITH_LEN(WSREP_MEMBERS_TABLE)}))
-    {
-      return TABLE_CATEGORY_INFORMATION;
-    }
-  }
-#endif /* WITH_WSREP */
   if (is_infoschema_db(&db))
     return TABLE_CATEGORY_INFORMATION;
 
@@ -328,6 +317,20 @@ TABLE_CATEGORY get_table_category(const Lex_ident_db &db,
 
     return TABLE_CATEGORY_MYSQL;
   }
+
+#ifdef WITH_WSREP
+  if (db.streq(WSREP_LEX_SCHEMA))
+  {
+    if(name.streq(WSREP_LEX_STREAMING))
+      return TABLE_CATEGORY_INFORMATION;
+    if (name.streq(WSREP_LEX_CLUSTER))
+      return TABLE_CATEGORY_INFORMATION;
+    if (name.streq(WSREP_LEX_MEMBERS))
+      return TABLE_CATEGORY_INFORMATION;
+    if (name.streq(WSREP_LEX_ALLOWLIST))
+      return TABLE_CATEGORY_INFORMATION;
+  }
+#endif /* WITH_WSREP */
 
   return TABLE_CATEGORY_USER;
 }
@@ -10311,6 +10314,50 @@ bool TABLE_LIST::is_the_same_definition(THD* thd, TABLE_SHARE *s)
   else
     set_tabledef_version(s);
   return FALSE;
+}
+
+
+/*
+  @brief
+    Save original names of derived table.
+
+  @param
+    derived     pointer to a select_lex containing the names to be saved.
+
+  @details
+    This is used in derived tables to optionally set the names of the resultant
+    columns.  Called before first st_select_lex::set_item_list_names().
+
+  @retval
+    true on failure, false otherwise
+*/
+
+bool TABLE_LIST::save_original_names(st_select_lex *derived)
+{
+  if (unlikely(derived->with_wild))
+    return false;
+  if (original_names_source)
+    return false;
+
+  // these elements allocated in LEX::parsed_derived_table
+  if (original_names->elements != derived->item_list.elements)
+  {
+    my_error(ER_INCORRECT_COLUMN_NAME_COUNT, MYF(0));
+    return true;
+  }
+
+  List_iterator_fast<Lex_ident_sys> overwrite_iterator(*original_names);
+  Lex_ident_sys *original_name;
+
+  List_iterator_fast<Item> item_list_iterator(derived->item_list);
+  Item *item_list_element;
+
+  while ((item_list_element= item_list_iterator++) &&
+         (original_name= overwrite_iterator++))
+    lex_string_set( original_name, item_list_element->name.str);
+
+  original_names_source= derived;
+  return false;
 }
 
 

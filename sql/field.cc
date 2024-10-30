@@ -1062,8 +1062,8 @@ CPP_UNNAMED_NS_END
   @brief
     Create a fixed size sort key part
 
-  @param  buff           buffer where values are written
-  @param  length         fixed size of the sort column
+  @param  buff             buffer where values are written
+  @param  length           fixed size of the sort column
 */
 
 void Field::make_sort_key_part(uchar *buff,uint length)
@@ -2733,6 +2733,52 @@ Field_row::~Field_row()
 }
 
 
+/*
+  Create a virtual table with Fields for a ROW members
+  from an explicit structure.
+*/
+bool Field_row::row_create_fields(THD *thd, List<Spvar_definition> *list)
+{
+  DBUG_ASSERT(!m_table);
+  return !(m_table= create_virtual_tmp_table(thd, *list));
+}
+
+
+/*
+  Create a virtual table with Fields for a ROW members
+  from an explicit or an anchored definition.
+  It covers the following scenarios:
+  - ROW(a INT, b VARCHAR(32)) - explicit
+  - ROW TYPE OF test.t2       - anchored table data type
+  Note, in case of a `ROW TYPE OF cursor` definition the
+  virtual table is not created (it's done later).
+*/
+bool Field_row::row_create_fields(THD *thd, const Spvar_definition &def)
+{
+  if (def.is_table_rowtype_ref()) // e.g. ROW TYPE OF test.t1
+  {
+    Row_definition_list defs;
+    return def.table_rowtype_ref()->resolve_table_rowtype_ref(thd, defs) ||
+           row_create_fields(thd, &defs);
+  }
+
+  if (def.is_cursor_rowtype_ref()) // e.g. ROW TYPE OF cursor
+  {
+    /*
+      The structure is resolved later,
+      in sp_instr_cursor_copy_struct::exec_core()
+    */
+    return false;
+  }
+
+  if (def.is_row()) // e.g. ROW(a INT, b VARCHAR(32))
+    return row_create_fields(thd, def.row_field_definitions());
+
+  DBUG_ASSERT(0); // Unknown ROW declaration style
+  return true;
+}
+
+
 bool Field_row::sp_prepare_and_store_item(THD *thd, Item **value)
 {
   DBUG_ENTER("Field_row::sp_prepare_and_store_item");
@@ -2768,6 +2814,38 @@ bool Field_row::sp_prepare_and_store_item(THD *thd, Item **value)
 
   src->bring_value();
   DBUG_RETURN(m_table->sp_set_all_fields_from_item(thd, src));
+}
+
+
+uint Field_row::cols() const
+{
+  // The table with ROW members must be already instantiated
+  DBUG_ASSERT(m_table);
+  return m_table->s->fields;
+}
+
+
+void Field_row::sql_type(String &res) const
+{
+  res.set_ascii(STRING_WITH_LEN("row"));
+}
+
+
+void Field_row::sql_type_for_sp_returns(String &res) const
+{
+  res.set_ascii(STRING_WITH_LEN("row("));
+  for (uint i= 0; i < m_table->s->fields; i++)
+  {
+    if (i > 0)
+      res.append(',');
+    Field *field= m_table->field[i];
+    res.append(field->field_name);
+    res.append(' ');
+    StringBuffer<64> col;
+    field->sql_type_for_sp_returns(col);
+    res.append(col.to_lex_cstring());
+  }
+  res.append(')');
 }
 
 
@@ -7736,15 +7814,21 @@ int Field_string::cmp_prefix(const uchar *a_ptr, const uchar *b_ptr,
 
 void Field_string::sort_string(uchar *to,uint length)
 {
-#ifdef DBUG_ASSERT_EXISTS
-  size_t tmp=
-#endif
+  /*
+    Let's find the real value length to truncate trailing padding spaces.
+    This is needed to avoid redundant WARN_SORTING_ON_TRUNCATED_LENGTH
+    warnings.
+  */
+  const LEX_CSTRING str= to_lex_cstring();
+  my_strnxfrm_ret_t rc=
     field_charset()->strnxfrm(to, length,
                               char_length() * field_charset()->strxfrm_multiply,
-                              ptr, field_length,
+                              (const uchar *) str.str, str.length,
                               MY_STRXFRM_PAD_WITH_SPACE |
                               MY_STRXFRM_PAD_TO_MAXLEN);
-  DBUG_ASSERT(tmp == length);
+  DBUG_ASSERT(rc.m_result_length == length);
+  if (rc.m_warnings & MY_STRNXFRM_TRUNCATED_WEIGHT_REAL_CHAR)
+    get_thd()->num_of_strings_sorted_on_truncated_length++;
 }
 
 
@@ -8192,15 +8276,15 @@ void Field_varstring::sort_string(uchar *to,uint length)
     length-= length_bytes;
   }
 
-#ifdef DBUG_ASSERT_EXISTS
-    size_t rc=
-#endif
-  field_charset()->strnxfrm(to, length,
-                            char_length() * field_charset()->strxfrm_multiply,
-                            (const uchar *) buf.ptr(), buf.length(),
-                            MY_STRXFRM_PAD_WITH_SPACE |
-                            MY_STRXFRM_PAD_TO_MAXLEN);
-  DBUG_ASSERT(rc == length);
+  my_strnxfrm_ret_t rc=
+    field_charset()->strnxfrm(to, length,
+                              char_length() * field_charset()->strxfrm_multiply,
+                              (const uchar *) buf.ptr(), buf.length(),
+                              MY_STRXFRM_PAD_WITH_SPACE |
+                              MY_STRXFRM_PAD_TO_MAXLEN);
+  DBUG_ASSERT(rc.m_result_length == length);
+  if (rc.m_warnings & MY_STRNXFRM_TRUNCATED_WEIGHT_REAL_CHAR)
+    get_thd()->num_of_strings_sorted_on_truncated_length++;
 }
 
 
@@ -9082,14 +9166,14 @@ void Field_blob::sort_string(uchar *to,uint length)
       store_bigendian(buf.length(), to + length, packlength);
     }
 
-#ifdef DBUG_ASSERT_EXISTS
-    size_t rc=
-#endif
-    field_charset()->strnxfrm(to, length, length,
-                              (const uchar *) buf.ptr(), buf.length(),
-                              MY_STRXFRM_PAD_WITH_SPACE |
-                              MY_STRXFRM_PAD_TO_MAXLEN);
-    DBUG_ASSERT(rc == length);
+    my_strnxfrm_ret_t rc=
+      field_charset()->strnxfrm(to, length, length,
+                                (const uchar *) buf.ptr(), buf.length(),
+                                MY_STRXFRM_PAD_WITH_SPACE |
+                                MY_STRXFRM_PAD_TO_MAXLEN);
+    DBUG_ASSERT(rc.m_result_length == length);
+    if (rc.m_warnings & MY_STRNXFRM_TRUNCATED_WEIGHT_REAL_CHAR)
+      get_thd()->num_of_strings_sorted_on_truncated_length++;
   }
 }
 

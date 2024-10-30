@@ -150,6 +150,7 @@ static char *ignore_server_ids_str, *do_server_ids_str;
 static char *start_pos_str, *stop_pos_str;
 static ulonglong start_position= BIN_LOG_HEADER_SIZE,
                  stop_position= (longlong)(~(my_off_t)0) ;
+static const longlong stop_position_default= (longlong)(~(my_off_t)0);
 #define start_position_mot ((my_off_t)start_position)
 #define stop_position_mot  ((my_off_t)stop_position)
 
@@ -1484,8 +1485,9 @@ static struct my_option my_options[] =
   {"hexdump", 'H', "Augment output with hexadecimal and ASCII event dump.",
    &opt_hexdump, &opt_hexdump, 0, GET_BOOL, NO_ARG,
    0, 0, 0, 0, 0, 0},
-  {"host", 'h', "Get the binlog from server.", &host, &host,
-   0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"host", 'h', "Get the binlog from server. Defaults in the following order: "
+  "$MARIADB_HOST, and then localhost",
+   &host, &host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"local-load", 'l', "Prepare local temporary files for LOAD DATA INFILE in the specified directory.",
    &dirname_for_local_load, &dirname_for_local_load, 0,
    GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -2264,6 +2266,11 @@ get_one_option(const struct my_option *opt, const char *argument,
 static int parse_args(int *argc, char*** argv)
 {
   int ho_error;
+  char *tmp;
+
+  tmp= getenv("MARIADB_HOST");
+  if (tmp && host == NULL)
+    host= my_strdup(PSI_NOT_INSTRUMENTED, tmp, MYF(MY_WME));
 
   if ((ho_error=handle_options(argc, argv, my_options, get_one_option)))
   {
@@ -3078,6 +3085,7 @@ static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
   IO_CACHE cache,*file= &cache;
   uchar tmp_buff[BIN_LOG_HEADER_SIZE];
   Exit_status retval= OK_CONTINUE;
+  my_time_t last_ev_when= MY_TIME_T_MAX;
 
   if (logname && strcmp(logname, "-") != 0)
   {
@@ -3169,9 +3177,35 @@ static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
               llstr(old_off,llbuff));
         goto err;
       }
-      // file->error == 0 means EOF, that's OK, we break in this case
+      // else file->error == 0 means EOF, that's OK, we break in this case
+
+      /*
+        Emit a warning in the event that we finished processing input
+        before reaching the boundary indicated by --stop-position.
+      */
+      if (((longlong)stop_position != stop_position_default) &&
+          stop_position > my_b_tell(file))
+      {
+          retval = OK_STOP;
+          warning("Did not reach stop position %llu before "
+                  "end of input", stop_position);
+      }
+
+      /*
+        Emit a warning in the event that we finished processing input
+        before reaching the boundary indicated by --stop-datetime.
+      */
+      if (stop_datetime != MY_TIME_T_MAX &&
+          stop_datetime > last_ev_when)
+      {
+          retval = OK_STOP;
+          warning("Did not reach stop datetime '%s' "
+                  "before end of input", stop_datetime_str);
+      }
+
       goto end;
     }
+    last_ev_when= ev->when;
     if ((retval= process_event(print_event_info, ev, old_off, logname)) !=
         OK_CONTINUE)
       goto end;
