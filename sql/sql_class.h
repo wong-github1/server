@@ -50,6 +50,7 @@
 #include <mysql/psi/mysql_table.h>
 #include <mysql_com_server.h>
 #include "session_tracker.h"
+#include "sql_path.h"
 #include "backup.h"
 #include "xa.h"
 #include "ddl_log.h"                            /* DDL_LOG_STATE */
@@ -5055,7 +5056,7 @@ public:
   /** Set the current database, without copying */
   void reset_db(const LEX_CSTRING *new_db);
 
-  bool check_if_current_db_is_set_with_error() const
+  bool check_if_current_db_is_set_with_error(bool f_raise_err=true) const
   {
     if (db.str == NULL)
     {
@@ -5067,8 +5068,13 @@ public:
         to resolve all CTE names as we don't need this message to be thrown
         for any CTE references.
       */
-      if (!lex->with_cte_resolution)
-        my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
+
+      if (likely(f_raise_err))
+      {
+        if (!lex->with_cte_resolution)
+          my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
+      }
+
       return TRUE;
     }
     return false;
@@ -5100,9 +5106,9 @@ public:
     For other lower_case_table_names values the name is already in
     its normalized case, so it's copied as is.
   */
-  Lex_ident_db_normalized copy_db_normalized()
+  Lex_ident_db_normalized copy_db_normalized(bool f_raise_err=true)
   {
-    if (check_if_current_db_is_set_with_error())
+    if (check_if_current_db_is_set_with_error(f_raise_err))
       return Lex_ident_db_normalized();
     LEX_CSTRING ident= make_ident_opt_casedn(db, lower_case_table_names == 2);
     /*
@@ -5567,6 +5573,7 @@ private:
 
 public:
   Session_tracker session_tracker;
+  Sql_path sql_path;
   /*
     Flag, mutex and condition for a thread to wait for a signal from another
     thread.
@@ -6078,6 +6085,8 @@ public:
       num_of_strings_sorted_on_truncated_length= 0;
     }
   }
+
+  void get_db_list(Dynamic_array<LEX_CSTRING> *db_list);
 };
 
 

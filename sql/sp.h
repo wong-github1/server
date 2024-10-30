@@ -195,9 +195,20 @@ public:
                                   sp_name *name,
                                   const Sp_handler **pkg_routine_handler,
                                   Database_qualified_name *pkgname) const;
+  bool sp_resolve_package_routine_sql_path(
+                                  THD *thd,
+                                  sp_head *caller,
+                                  sp_name *name,
+                                  const Sp_handler **pkg_routine_handler,
+                                  Database_qualified_name *pkgname) const;
   virtual sp_head *sp_find_routine(THD *thd,
                                    const Database_qualified_name *name,
                                    bool cache_only) const;
+  int sp_find_routine_quick(THD *thd,
+                            const Database_qualified_name *name) const;
+  bool sp_find_qualified_routine(THD *thd,
+                                 const Lex_ident_db &tmpdb,
+                                 sp_name *name) const;
   virtual int sp_cache_routine(THD *thd, const Database_qualified_name *name,
                                sp_head **sp) const;
 
