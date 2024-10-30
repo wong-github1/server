@@ -6083,6 +6083,8 @@ public:
       num_of_strings_sorted_on_truncated_length= 0;
     }
   }
+
+  void get_db_list(Dynamic_array<LEX_CSTRING> *db_list);
 };
 
 
