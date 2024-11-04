@@ -135,7 +135,7 @@ then
   fi
   cd $GENDIR/tmpgen
   rm -rf *
-  cp -r $SYSDIR/after_setup.sql $SYSDIR/tables $SYSDIR/triggers $SYSDIR/functions $SYSDIR/views $SYSDIR/procedures .
+  cp -r $SYSDIR/after_setup.sql $SYSDIR/tables $SYSDIR/triggers $SYSDIR/functions $SYSDIR/views $SYSDIR/procedures $SYSDIR/stored_packages .
 
   # Switch user if requested
   # Remove individual copyrights

@@ -127,6 +127,8 @@ sys_get_config	FUNCTION
 version_major	FUNCTION
 version_minor	FUNCTION
 version_patch	FUNCTION
+UTL_ENCODE	PACKAGE
+UTL_ENCODE	PACKAGE BODY
 create_synonym_db	PROCEDURE
 diagnostics	PROCEDURE
 execute_prepared_stmt	PROCEDURE
