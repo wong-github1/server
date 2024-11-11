@@ -50,6 +50,7 @@
 #include <mysql/psi/mysql_table.h>
 #include <mysql_com_server.h>
 #include "session_tracker.h"
+#include "sql_path.h"
 #include "backup.h"
 #include "xa.h"
 #include "ddl_log.h"                            /* DDL_LOG_STATE */
@@ -5572,6 +5573,7 @@ private:
 
 public:
   Session_tracker session_tracker;
+  Sql_path sql_path;
   /*
     Flag, mutex and condition for a thread to wait for a signal from another
     thread.

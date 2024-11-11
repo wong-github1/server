@@ -7669,7 +7669,6 @@ err:
 static bool sysvar_path_parsing_ascii(CHARSET_INFO *cs, LEX_CSTRING *cstring,
   char ***tokens, int *token_cnt, bool ansi_quotes)
 {
-  bool  ret;
   char *input_str;
   char *token;
 
@@ -7708,8 +7707,6 @@ static bool sysvar_path_parsing_ascii(CHARSET_INFO *cs, LEX_CSTRING *cstring,
 
   return ( sysvar_path_handle_quote_delimited(cs, *tokens,
           *token_cnt, ansi_quotes, false) );
-
-  return ret;
 
 err:
   if (input_str)
@@ -7769,11 +7766,15 @@ static bool sysvar_path_on_check(sys_var *self, THD *thd, set_var *var)
   if (var->value) // not set DEFAULT
   {
     memset(string_value->str, 0, string_value->length);
+    thd->sql_path.free_db_list();
+
     for(int i = 0; i < token_cnt; i++)
     {
       strcat(string_value->str, tokens[i]);
       if(i < token_cnt - 1)
         strcat(string_value->str, ",");
+
+      thd->sql_path.append_db(tokens[i]);
     }
     string_value->length = strlen(string_value->str);
   }

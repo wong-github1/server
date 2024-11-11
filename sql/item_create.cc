@@ -2904,30 +2904,14 @@ Create_qfunc::create_func(THD *thd, const LEX_CSTRING *name,
       db= get_db_sql_path(thd, *name);
     else
     {
-      if (thd->lex->sphead)
-      {
-        if(thd->lex->sphead->m_db.streq(thd->db) &&
-          thd->lex->sphead->m_name.bin_eq(*name))
-        {
-          my_error(ER_SP_NO_RECURSION, MYF(0));
-          return NULL;
-        }
-      }
+      Database_qualified_name dbqname(db, *name);
 
-      sp_name *spname= new (thd->mem_root) sp_name(db, *name, false);
-      if (unlikely(!spname))
-        return NULL;
-
-      Parser_state *oldps;
-      oldps= thd->m_parser_state;
-      thd->m_parser_state= NULL;
-      if (unlikely(!sp_handler_function.sp_find_routine(thd, spname, false)))
+      if (sp_handler_function.sp_find_routine_quick(thd, &dbqname))
       {
         Lex_ident_db_normalized db2= get_db_sql_path(thd, *name);
         if (db2.str)
-          db = db2;
+          db= db2;
       }
-      thd->m_parser_state= oldps;
     }
   }
 

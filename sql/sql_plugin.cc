@@ -3276,6 +3276,7 @@ void plugin_thdvar_init(THD *thd)
 
   my_free(thd->variables.path);
   thd->variables.path= 0;
+  thd->sql_path.free_db_list();
 
   thd->variables= global_system_variables;
 
@@ -3315,6 +3316,7 @@ void plugin_thdvar_init(THD *thd)
     my_strdup(key_memory_Sys_var_charptr_value,
               global_system_variables.path,
               MYF(MY_WME | MY_THREAD_SPECIFIC));
+  thd->sql_path.strtok_db(global_system_variables.path);
 
   DBUG_VOID_RETURN;
 }
@@ -3392,6 +3394,7 @@ void plugin_thdvar_cleanup(THD *thd)
 
   my_free(thd->variables.path);
   thd->variables.path= 0;
+  thd->sql_path.free_db_list();
 
   mysql_mutex_lock(&LOCK_plugin);
 

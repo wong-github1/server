@@ -207,6 +207,8 @@ public:
   virtual sp_head *sp_find_routine(THD *thd,
                                    const Database_qualified_name *name,
                                    bool cache_only) const;
+  int sp_find_routine_quick(THD *thd,
+                            const Database_qualified_name *name) const;
   virtual int sp_cache_routine(THD *thd, const Database_qualified_name *name,
                                sp_head **sp) const;
 

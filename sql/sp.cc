@@ -2238,6 +2238,67 @@ Sp_handler::sp_find_routine(THD *thd, const Database_qualified_name *name,
 }
 
 
+int
+Sp_handler::sp_find_routine_quick(THD *thd,
+                                  const Database_qualified_name *name) const
+{
+  DBUG_ENTER("Sp_handler::sp_find_routine_quick");
+  DBUG_PRINT("enter", ("name:  %.*s.%.*s  type: %s",
+                       (int) name->m_db.length, name->m_db.str,
+                       (int) name->m_name.length, name->m_name.str,
+                       type_str()));
+
+  Parser_state *oldps;
+  oldps= thd->m_parser_state;
+  thd->m_parser_state= NULL;
+
+  sp_cache **cp= get_cache(thd);
+  sp_head *sp;
+
+  if ((sp= sp_cache_lookup(cp, name)))
+  {
+    if (unlikely(!sp_clone_and_link_routine(thd, name, sp)))
+    {
+      thd->m_parser_state= oldps;
+      DBUG_RETURN(1);
+    }
+      
+  }
+
+  TABLE *table;
+  int ret;
+  THD::used_t saved_time_zone_used= thd->used & THD::TIME_ZONE_USED;
+
+  start_new_trans new_trans(thd);
+
+  if (!(table= open_proc_table_for_read(thd)))
+  {
+    ret= SP_OPEN_TABLE_FAILED;
+    goto done;
+  }
+
+  if ((ret= db_find_routine_aux(thd, name, table)) != SP_OK)
+    goto done;
+
+  thd->commit_whole_transaction_and_close_tables();
+  new_trans.restore_old_transaction();
+
+  thd->m_parser_state= oldps;
+
+  DBUG_RETURN(ret);
+
+done:
+  thd->used= (thd->used & ~THD::TIME_ZONE_USED) | saved_time_zone_used;
+  if (table)
+    thd->commit_whole_transaction_and_close_tables();
+  new_trans.restore_old_transaction();
+
+  thd->m_parser_state= oldps;
+
+  DBUG_RETURN(ret);
+}
+
+
 /**
   Find a package routine.
   See sp_cache_routine() for more information on parameters and return value.

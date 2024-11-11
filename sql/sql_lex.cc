@@ -9657,11 +9657,21 @@ bool LEX::call_statement_start(THD *thd, sp_name *name)
 
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 {
-  sp_name *spname= make_sp_name_sql_path(thd, *name);
+  // sp_name *spname= make_sp_name_sql_path(thd, *name); // kokseng org
+  sp_name *spname= make_sp_name(thd, *name); // kokseng
   return unlikely(!spname) || call_statement_start(thd, spname);
 }
 
 
+bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
+                                         const Lex_ident_sys_st *name2) // kokseng
+{
+  sp_name *spname= make_sp_name(thd, *name1, *name2);
+  return unlikely(!spname) || call_statement_start(thd, spname);
+} // kokseng
+
+
+#if 0  // kokseng org
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
                                          const Lex_ident_sys_st *name2)
 {
@@ -9674,7 +9684,7 @@ bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
 
   return false;
 }
-
+#endif  // kokseng org
 
 bool LEX::call_statement_start(THD *thd,
                                const Lex_ident_sys_st *db,
@@ -10042,7 +10052,7 @@ Item *Lex_trim_st::make_item_func_trim_oracle(THD *thd) const
 Item *LEX::make_item_func_call_generic(THD *thd,
                                        const Lex_ident_cli_st *cdb,
                                        const Lex_ident_cli_st *cname,
-                                       List<Item> *args)
+                                       List<Item> *args)  // kokseng
 {
   Lex_ident_sys db(thd, cdb), name(thd, cname);
   if (db.is_null() || name.is_null())
@@ -10060,7 +10070,8 @@ Item *LEX::make_item_func_call_generic(THD *thd,
     - MySQL.version() is the SQL 2003 syntax for the native function
     version() (a vendor can specify any schema).
   */
-  return make_item_func_call_generic(thd, db, name, args, true);
+  return make_item_func_call_generic(thd, db, name, args, true);  // kokseng org
+  // return make_item_func_call_generic(thd, db, name, args, false);  // kokseng
 }
 
 
@@ -10095,6 +10106,26 @@ Item *LEX::make_item_func_call_generic(THD *thd,
   if (!dbn.str || Lex_ident_routine::check_name_with_error(name))
     return NULL;
 
+#if 0 // kokseng
+  {
+    sp_head *sphead = NULL;
+    sp_name *name;
+    LEX_CSTRING lex_db = {"ksdb", 4};
+    LEX_CSTRING lex_name = {"func", 4};
+
+    name= new (thd->mem_root) sp_name(Lex_ident_db_normalized(lex_db),
+                                        lex_name, true);
+
+    Parser_state *oldps= thd->m_parser_state;
+    thd->m_parser_state= NULL;
+    sphead= sp_handler_function.sp_find_routine(thd, name, false);
+    thd->m_parser_state= oldps;
+
+    printf("sphead = %p\n", sphead);
+    printf("sphead = %p\n", sphead);
+  }
+#endif // kokseng
+
   if (sql_path)
   {
     bool found= false;
@@ -10109,15 +10140,17 @@ Item *LEX::make_item_func_call_generic(THD *thd,
     else
       return NULL;
 
-    found= false;
-    ret= precheck_db_routine(thd, dbn, name, &found);
-    if (!ret)
-    {
-      if (found)
-        return builder->create_with_db(thd, dbn, name, true, args);
-    }
-    else
-      return NULL;
+    // kokseng org
+    // found= false;
+    // ret= precheck_db_routine(thd, dbn, name, &found);
+    // if (!ret)
+    // {
+    //   if (found)
+    //     return builder->create_with_db(thd, dbn, name, true, args);
+    // }
+    // else
+    //   return NULL;
+    // kokseng org
 
     Item *itemRet= make_item_func_call_generic_sql_path(thd, dbn, name, args);
     if (likely(itemRet))
@@ -10253,7 +10286,8 @@ Item *LEX::make_item_func_call_generic_sql_path(THD *thd,
           Parser_state *oldps;
           oldps= thd->m_parser_state;
           thd->m_parser_state= NULL;
-          if (likely(sp_handler_package_function.sp_find_routine(thd, qname, false)))
+          if (likely(sp_handler_package_function.sp_find_routine(thd, qname, false)))  // kokseng org
+          // if (likely(sp_handler_package_function.sp_find_routine(thd, qname, true)))  // kokseng
           {
             // found
             thd->m_parser_state= oldps;
