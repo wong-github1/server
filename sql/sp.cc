@@ -2262,7 +2262,6 @@ Sp_handler::sp_find_routine_quick(THD *thd,
       thd->m_parser_state= oldps;
       DBUG_RETURN(1);
     }
-      
   }
 
   TABLE *table;
@@ -2556,6 +2555,25 @@ is_package_public_routine(THD *thd,
 }
 
 
+static bool
+is_package_public_routine_with_body(THD *thd,
+                                    const Lex_ident_db &db,
+                                    const LEX_CSTRING &package,
+                                    const LEX_CSTRING &routine,
+                                    enum_sp_type type)
+{
+  if (!is_package_public_routine(thd, db, package, routine, type))
+    return false;
+
+  sp_head *sp= NULL;
+  Database_qualified_name tmp(db, package);
+  bool ret= sp_handler_package_body.
+              sp_cache_routine_reentrant(thd, &tmp, &sp);
+  sp_package *spec= (!ret && sp) ? sp->get_package() : NULL;
+  return spec && spec->m_routine_implementations.find(routine, type);
+}
+
+
 /**
   Check if a routine has a declaration in the CREATE PACKAGE statement
   by looking up in sp_package_spec_cache.
@@ -2725,31 +2743,6 @@ bool Sp_handler::
 }
 
 
-bool Sp_handler::
-  sp_resolve_package_routine_explicit_quick(THD *thd,
-                                            sp_head *caller,
-                                            sp_name *name,
-                                            bool *found) const
-{
-  sp_package *pkg;
-
-  const Lex_ident_db tmpdb= Lex_ident_db(thd->db);
-  if (is_package_public_routine(thd, tmpdb, name->m_db, name->m_name, type()) ||
-      // Check if a package routine calls a private routine
-      (caller && caller->m_parent &&
-       is_package_body_routine(thd, caller->m_parent,
-                               name->m_db, name->m_name, type())) ||
-      // Check if a package initialization sections calls a private routine
-      (caller && (pkg= caller->get_package()) &&
-       is_package_body_routine(thd, pkg, name->m_db, name->m_name, type())))
-  {
-    *found = true;
-  }
-
-  return false;
-}
-
-
 /**
   Detect cases when a package routine (rather than a standalone routine)
   is called, and rewrite sp_name accordingly.
@@ -2783,18 +2776,72 @@ Sp_handler::sp_resolve_package_routine(THD *thd,
 
 
 bool
-Sp_handler::sp_resolve_package_routine_quick(THD *thd,
+Sp_handler::sp_resolve_package_routine_sql_path(THD *thd,
                                        sp_head *caller,
                                        sp_name *name,
-                                       bool *found) const
+                                       const Sp_handler **pkg_routine_handler,
+                                       Database_qualified_name *pkgname) const
 {
-  if (!thd->db.length)
-    return false;
+  bool ret= false;
+  sp_name *qname= NULL;
 
-  return name->m_explicit_name ?
-         sp_resolve_package_routine_explicit_quick(thd, caller, name, found) :
-        //  sp_resolve_package_routine_implicit_quick(thd, caller, name, found);
-         false;
+  if (!thd->db.length)
+  {
+    if (name->m_explicit_name)
+      ret= thd->sql_path.find_db_qualified(thd, name, pkg_routine_handler, pkgname);
+    else
+    {
+      if (thd->lex->sphead && thd->lex->sphead->m_name.str)
+      {
+        if ((*pkg_routine_handler)->sp_find_routine_quick(thd, name))
+        {
+          ret= thd->sql_path.find_db_unqualified(thd, name->m_name, *pkg_routine_handler, NULL, &qname);
+          if (!ret && qname)
+            *name= *qname;
+        }
+      }
+    }
+
+    return ret;
+  }
+
+  if (name->m_explicit_name)
+  {
+    ret= sp_resolve_package_routine_explicit(thd, caller, name,
+                                             pkg_routine_handler, pkgname);
+
+    if (!ret && !pkgname->m_name.length)
+    {
+      if ((*pkg_routine_handler)->sp_find_qualified_routine(thd, name->m_db, name))
+        ret= thd->sql_path.find_db_qualified(thd, name, pkg_routine_handler, pkgname);
+    }
+  }
+  else
+  {
+    ret= sp_resolve_package_routine_implicit(thd, caller, name,
+                                             pkg_routine_handler, pkgname);
+
+    if (!ret && !pkgname->m_name.length)
+    {
+      if ((*pkg_routine_handler)->sp_find_routine_quick(thd, name))
+      {
+        ret= thd->sql_path.find_db_unqualified(thd, name->m_name, *pkg_routine_handler, NULL, &qname);
+        if (!ret && qname)
+          *name= *qname;
+      }
+    }
+  }
+
+  return ret;
+}
+
+
+bool Sp_handler::sp_find_qualified_routine(THD *thd,
+                                           const Lex_ident_db &tmpdb,
+                                           sp_name *name) const
+{
+  return !(is_package_public_routine_with_body(thd, tmpdb, name->m_db,
+                                               name->m_name, type()));
 }
 
 

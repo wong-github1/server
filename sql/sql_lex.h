@@ -3816,8 +3816,6 @@ public:
   sp_name *make_sp_name(THD *thd, const Lex_ident_sys_st &name1,
                                   const Lex_ident_sys_st &name2);
   sp_name *make_sp_name_sql_path(THD *thd, const Lex_ident_sys_st &name);
-  sp_name *make_sp_name_sql_path(THD *thd, const Lex_ident_sys_st &name1,
-                                           const Lex_ident_sys_st &name2);
   sp_name *make_sp_name_package_routine(THD *thd,
                                         const Lex_ident_sys_st &name);
   sp_lex_local *package_routine_start(THD *thd,
@@ -4138,32 +4136,16 @@ public:
   Item *make_item_func_call_generic(THD *thd,
                                     const Lex_ident_sys &db,
                                     const Lex_ident_sys &name,
-                                    List<Item> *args,
-                                    bool sql_path=false);
+                                    List<Item> *args);
   Item *make_item_func_call_generic(THD *thd,
                                     const Lex_ident_db &db,
                                     const Lex_ident_routine &name,
-                                    List<Item> *args,
-                                    bool sql_path=false);
+                                    List<Item> *args);
   Item *make_item_func_call_generic(THD *thd,
                                     Lex_ident_cli_st *db,
                                     Lex_ident_cli_st *pkg,
                                     Lex_ident_cli_st *name,
                                     List<Item> *args);
-  Item *make_item_func_call_generic_sql_path(THD *thd,
-                                            const Lex_ident_db_normalized &db,
-                                            const Lex_ident_routine &name,
-                                            List<Item> *args);
-  bool precheck_db_package_routine(THD *thd,
-                                   const Lex_ident_db_normalized &db,
-                                   const Lex_ident_routine &name,
-                                   Sp_handler *sph,
-                                   bool use_explicit_name,
-                                   bool *found) const;
-  bool precheck_db_routine(THD *thd,
-                           const Lex_ident_db_normalized &db,
-                           const Lex_ident_routine &name,
-                           bool *found) const;
   Item *make_item_func_call_native_or_parse_error(THD *thd,
                                                   Lex_ident_cli_st &name,
                                                   List<Item> *args);

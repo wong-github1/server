@@ -244,8 +244,6 @@ public:
                                bool use_explicit_name,
                                List<Item> *item_list) = 0;
 
-  Lex_ident_db_normalized get_db_sql_path(THD *thd, const LEX_CSTRING &name);
-
 protected:
   /** Constructor. */
   Create_qfunc() = default;

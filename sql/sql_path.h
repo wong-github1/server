@@ -17,11 +17,13 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-// #include "m_string.h"
-// #include "thr_lock.h"
-// #include "sql_hset.h"
 #include "mysqld.h"
 #include "sql_array.h"
+
+
+/* forward declarations */
+class Database_qualified_name;
+
 
 class Sql_path
 {
@@ -32,6 +34,14 @@ public:
   Sql_path();
   void append_db(char *in);
   void strtok_db(char *in);
+  bool find_db_unqualified(THD *thd, const LEX_CSTRING &name,
+                           const Sp_handler *sph,
+                           Lex_ident_db_normalized *dbn_out,
+                           sp_name **spname_out);
+  bool find_db_qualified(THD *thd,
+                         sp_name *name,
+                         const Sp_handler **sph,
+                         Database_qualified_name *pkgname);
   void free_db_list();
 };
 

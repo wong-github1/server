@@ -41,7 +41,7 @@
 #ifdef WITH_WSREP
 #include "mysql/service_wsrep.h"
 #endif
-#include "sql_db.h"
+#include "sql_path.h"
 
 void LEX::parse_error(uint err_number)
 {
@@ -7583,156 +7583,27 @@ sp_name *LEX::make_sp_name_sql_path(THD *thd, const Lex_ident_sys_st &name)
     return NULL;
 
   Lex_ident_db_normalized db;
-  Parser_state *oldps;
+  sp_name *res= NULL;
 
   db= copy_db_normalized(false);
-  if (db.str)
+  if (!db.str)
   {
-    sp_name *res= new (thd->mem_root) sp_name(db, name, false);
-    if (unlikely(!spname))
+    if (thd->sql_path.find_db_unqualified(thd, name, &sp_handler_procedure,
+                                          NULL, &res))
       return NULL;
 
-    oldps= thd->m_parser_state;
-    thd->m_parser_state= NULL;
-    if (likely(sp_handler_procedure.sp_find_routine(thd, res, false)))
+    if (!db.str)
     {
-      thd->m_parser_state= oldps;
-      return res;
-    }
-    thd->m_parser_state= oldps;
-  }
+      if (!thd->lex->with_cte_resolution)
+        my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
 
-  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
-  size_t count;
-  LEX_CSTRING db_cstring;
-
-  thd->get_db_list(&db_list);
-  count= db_list.elements();
-  for (size_t i= 0; i < count; i++)
-  {
-    db_cstring= db_list.at(i);
-    if (likely(!check_db_dir_existence(db_cstring.str)))
-    {
-      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
-      if (db_int.str)
-      {
-        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
-        if (dbn.str)
-        {
-          sp_name *spname= new (thd->mem_root) sp_name(dbn, name, false);
-          if (unlikely(!spname))
-            return NULL;
-
-          oldps= thd->m_parser_state;
-          thd->m_parser_state= NULL;
-          if (likely(sp_handler_procedure.sp_find_routine(thd, spname, false)))
-          {
-            thd->m_parser_state= oldps;
-            return spname;
-          }
-          thd->m_parser_state= oldps;
-        }
-      }
+      return NULL;
     }
   }
 
-  my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
+  res= new (thd->mem_root) sp_name(db, name, false);
 
-  return NULL;
-}
-
-
-sp_name *LEX::make_sp_name_sql_path(THD *thd, const Lex_ident_sys_st &name1,
-                                              const Lex_ident_sys_st &name2)
-{
-  sp_name *res= make_sp_name(thd, name1, name2);
-  if (unlikely(!res))
-    return NULL;
-
-  bool found= false;
-  bool ret= false;
-
-  ret= precheck_db_package_routine(thd, Lex_ident_db_normalized(name1),
-                Lex_ident_routine(name2), &sp_handler_procedure, true, &found);
-  if (!ret)
-  {
-    if (found)
-      return res;
-  }
-  else
-    return NULL;
-
-  found= false;
-  ret= precheck_db_routine(thd, Lex_ident_db_normalized(name1),
-                Lex_ident_routine(name2), &found);
-  if (!ret)
-  {
-    if (found)
-      return res;
-  }
-  else
-    return NULL;
-
-  if (Lex_ident_routine::check_name_with_error(name1))
-    return NULL;
-
-  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
-  size_t count;
-  LEX_CSTRING db_cstring;
-
-  thd->get_db_list(&db_list);
-  count= db_list.elements();
-  for (size_t i= 0; i < count; i++)
-  {
-    db_cstring= db_list.at(i);
-    if (likely(!check_db_dir_existence(db_cstring.str)))
-    {
-      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
-      if (db_int.str)
-      {
-        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
-        if (dbn.str)
-        {
-          Identifier_chain2 q_pkg_proc(name1, name2);
-          sp_name *spname;
-          Database_qualified_name q_db_pkg(dbn, name1);
-          LEX_CSTRING pkg_dot_proc;
-
-          if (!(pkg_dot_proc= q_pkg_proc.make_qname(thd->mem_root)).str ||
-              check_ident_length(&pkg_dot_proc) ||
-              !(spname= new (thd->mem_root) sp_name(dbn, pkg_dot_proc, true)))
-            return NULL;
-
-          Parser_state *oldps;
-          oldps= thd->m_parser_state;
-          thd->m_parser_state= NULL;
-          if (likely(sp_handler_package_procedure.sp_find_routine(thd, spname, false)))
-          {
-            // found
-            thd->m_parser_state= oldps;
-
-            sql_command= SQLCOM_CALL;
-
-            sp_handler_package_function.add_used_routine(thd->lex, thd, spname);
-            sp_handler_package_body.add_used_routine(thd->lex, thd, &q_db_pkg);
-
-            m_sql_cmd= new (thd->mem_root) Sql_cmd_call(spname,
-                                               &sp_handler_package_procedure);
-
-            if (!m_sql_cmd)
-              return NULL;
-
-            return spname;
-          }
-          thd->m_parser_state= oldps;
-        }
-      }
-    }
-  }
-
-  my_message(ER_NO_DB_ERROR, ER(ER_NO_DB_ERROR), MYF(0));
-
-  return NULL;
+  return res;
 }
 
 
@@ -9643,8 +9514,8 @@ bool LEX::call_statement_start(THD *thd, sp_name *name)
   const Sp_handler *sph= &sp_handler_procedure;
   sql_command= SQLCOM_CALL;
   value_list.empty();
-  if (unlikely(sph->sp_resolve_package_routine(thd, thd->lex->sphead,
-                                               name, &sph, &pkgname)))
+  if (unlikely(sph->sp_resolve_package_routine_sql_path(thd, thd->lex->sphead,
+                                                        name, &sph, &pkgname)))
     return true;
   if (unlikely(!(m_sql_cmd= new (thd->mem_root) Sql_cmd_call(name, sph))))
     return true;
@@ -9657,34 +9528,18 @@ bool LEX::call_statement_start(THD *thd, sp_name *name)
 
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name)
 {
-  // sp_name *spname= make_sp_name_sql_path(thd, *name); // kokseng org
-  sp_name *spname= make_sp_name(thd, *name); // kokseng
+  sp_name *spname= make_sp_name_sql_path(thd, *name);
   return unlikely(!spname) || call_statement_start(thd, spname);
 }
 
 
-bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
-                                         const Lex_ident_sys_st *name2) // kokseng
-{
-  sp_name *spname= make_sp_name(thd, *name1, *name2);
-  return unlikely(!spname) || call_statement_start(thd, spname);
-} // kokseng
-
-
-#if 0  // kokseng org
 bool LEX::call_statement_start(THD *thd, const Lex_ident_sys_st *name1,
                                          const Lex_ident_sys_st *name2)
 {
-  sp_name *spname= make_sp_name_sql_path(thd, *name1, *name2);
-  if(unlikely(!spname))
-    return true;
-
-  if (unlikely(!strchr(spname->m_name.str, '.')))
-    return call_statement_start(thd, spname);
-
-  return false;
+  sp_name *spname= make_sp_name(thd, *name1, *name2);
+  return unlikely(!spname) || call_statement_start(thd, spname);
 }
-#endif  // kokseng org
+
 
 bool LEX::call_statement_start(THD *thd,
                                const Lex_ident_sys_st *db,
@@ -10052,7 +9907,7 @@ Item *Lex_trim_st::make_item_func_trim_oracle(THD *thd) const
 Item *LEX::make_item_func_call_generic(THD *thd,
                                        const Lex_ident_cli_st *cdb,
                                        const Lex_ident_cli_st *cname,
-                                       List<Item> *args)  // kokseng
+                                       List<Item> *args)
 {
   Lex_ident_sys db(thd, cdb), name(thd, cname);
   if (db.is_null() || name.is_null())
@@ -10070,30 +9925,27 @@ Item *LEX::make_item_func_call_generic(THD *thd,
     - MySQL.version() is the SQL 2003 syntax for the native function
     version() (a vendor can specify any schema).
   */
-  return make_item_func_call_generic(thd, db, name, args, true);  // kokseng org
-  // return make_item_func_call_generic(thd, db, name, args, false);  // kokseng
+  return make_item_func_call_generic(thd, db, name, args);
 }
 
 
 Item *LEX::make_item_func_call_generic(THD *thd,
                                        const Lex_ident_sys &db,
                                        const Lex_ident_sys &name,
-                                       List<Item> *args,
-                                       bool sql_path)
+                                       List<Item> *args)
 {
   const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db);
   if (!db_int.str || Lex_ident_routine::check_name_with_error(name))
     return NULL;
   return make_item_func_call_generic(thd, db_int,
-                                     Lex_ident_routine(name), args, sql_path);
+                                     Lex_ident_routine(name), args);
 }
 
 
 Item *LEX::make_item_func_call_generic(THD *thd,
                                        const Lex_ident_db &db,
                                        const Lex_ident_routine &name,
-                                       List<Item> *args,
-                                       bool sql_path)
+                                       List<Item> *args)
 {
   const Schema *schema= Schema::find_by_name(db);
   if (schema)
@@ -10105,57 +9957,6 @@ Item *LEX::make_item_func_call_generic(THD *thd,
   const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db);
   if (!dbn.str || Lex_ident_routine::check_name_with_error(name))
     return NULL;
-
-#if 0 // kokseng
-  {
-    sp_head *sphead = NULL;
-    sp_name *name;
-    LEX_CSTRING lex_db = {"ksdb", 4};
-    LEX_CSTRING lex_name = {"func", 4};
-
-    name= new (thd->mem_root) sp_name(Lex_ident_db_normalized(lex_db),
-                                        lex_name, true);
-
-    Parser_state *oldps= thd->m_parser_state;
-    thd->m_parser_state= NULL;
-    sphead= sp_handler_function.sp_find_routine(thd, name, false);
-    thd->m_parser_state= oldps;
-
-    printf("sphead = %p\n", sphead);
-    printf("sphead = %p\n", sphead);
-  }
-#endif // kokseng
-
-  if (sql_path)
-  {
-    bool found= false;
-    bool ret= false;
-
-    ret= precheck_db_package_routine(thd, dbn, name, &sp_handler_function, true, &found);
-    if (!ret)
-    {
-      if (found)
-        return builder->create_with_db(thd, dbn, name, true, args);
-    }
-    else
-      return NULL;
-
-    // kokseng org
-    // found= false;
-    // ret= precheck_db_routine(thd, dbn, name, &found);
-    // if (!ret)
-    // {
-    //   if (found)
-    //     return builder->create_with_db(thd, dbn, name, true, args);
-    // }
-    // else
-    //   return NULL;
-    // kokseng org
-
-    Item *itemRet= make_item_func_call_generic_sql_path(thd, dbn, name, args);
-    if (likely(itemRet))
-      return itemRet;
-  }
 
   return builder->create_with_db(thd, dbn, name, true, args);
 }
@@ -10205,112 +10006,6 @@ Item *LEX::make_item_func_call_generic(THD *thd,
                                             *args);
   return new (thd->mem_root) Item_func_sp(thd, thd->lex->current_context(),
                                           qname, &sp_handler_package_function);
-}
-
-
-bool LEX::precheck_db_package_routine(THD *thd,
-                                      const Lex_ident_db_normalized &db,
-                                      const Lex_ident_routine &name,
-                                      Sp_handler *sph,
-                                      bool use_explicit_name,
-                                      bool *found) const
-{
-  sp_name *qname;
-
-  qname= new (thd->mem_root) sp_name(db, name, use_explicit_name);
-  if (unlikely(!qname))
-    return true;
-
-  return sph->sp_resolve_package_routine_quick(thd,
-                      thd->lex->sphead, qname, found);
-}
-
-
-bool LEX::precheck_db_routine(THD *thd,
-                              const Lex_ident_db_normalized &db,
-                              const Lex_ident_routine &name,
-                              bool *found) const
-{
-  sp_name *spname;
-  Parser_state *oldps;
-
-  spname= new (thd->mem_root) sp_name(db, name, true);
-  if (unlikely(!spname))
-    return true;
-
-  oldps= thd->m_parser_state;
-  thd->m_parser_state= NULL;
-  if (likely(sp_handler_function.sp_find_routine(thd, spname, false)))
-    *found = true;
-  thd->m_parser_state= oldps;
-
-  return false;
-}
-
-
-Item *LEX::make_item_func_call_generic_sql_path(THD *thd,
-                                            const Lex_ident_db_normalized &db,
-                                            const Lex_ident_routine &name,
-                                            List<Item> *args)
-{
-  if (Lex_ident_routine::check_name_with_error(db))
-    return NULL;
-
-  Dynamic_array<LEX_CSTRING> db_list(PSI_INSTRUMENT_MEM);
-  size_t count;
-  LEX_CSTRING db_cstring;
-
-  thd->get_db_list(&db_list);
-  count= db_list.elements();
-  for (size_t i= 0; i < count; i++)
-  {
-    db_cstring= db_list.at(i);
-    if (likely(!check_db_dir_existence(db_cstring.str)))
-    {
-      const Lex_ident_db db_int= thd->to_ident_db_internal_with_error(db_cstring);
-      if (db_int.str)
-      {
-        const Lex_ident_db_normalized dbn= thd->to_ident_db_normalized_with_error(db_int);
-        if (dbn.str)
-        {
-          Identifier_chain2 q_pkg_func(db, name);
-          sp_name *qname;
-          Database_qualified_name q_db_pkg(dbn, db);
-          LEX_CSTRING pkg_dot_func;
-
-          if (!(pkg_dot_func= q_pkg_func.make_qname(thd->mem_root)).str ||
-              check_ident_length(&pkg_dot_func) ||
-              !(qname= new (thd->mem_root) sp_name(dbn, pkg_dot_func, true)))
-            return NULL;
-
-          Parser_state *oldps;
-          oldps= thd->m_parser_state;
-          thd->m_parser_state= NULL;
-          if (likely(sp_handler_package_function.sp_find_routine(thd, qname, false)))  // kokseng org
-          // if (likely(sp_handler_package_function.sp_find_routine(thd, qname, true)))  // kokseng
-          {
-            // found
-            thd->m_parser_state= oldps;
-
-            sp_handler_package_function.add_used_routine(thd->lex, thd, qname);
-            sp_handler_package_body.add_used_routine(thd->lex, thd, &q_db_pkg);
-
-            thd->lex->safe_to_cache_query= 0;
-
-            if (args && args->elements > 0)
-              return new (thd->mem_root) Item_func_sp(thd, thd->lex->current_context(),
-                                                      qname, &sp_handler_package_function,
-                                                      *args);
-            return new (thd->mem_root) Item_func_sp(thd, thd->lex->current_context(),
-                                                    qname, &sp_handler_package_function);
-          }
-          thd->m_parser_state= oldps;
-        }
-      }
-    }
-  }
-
-  return NULL;
 }
 
 
