@@ -76,7 +76,7 @@ class Sp_handler
                                            const;
 protected:
   int db_find_routine_aux(THD *thd, const Database_qualified_name *name,
-                          TABLE *table) const;
+                          TABLE *table, bool update=true) const;
   int db_find_routine(THD *thd, const Database_qualified_name *name,
                       sp_head **sphp) const;
   int db_find_and_cache_routine(THD *thd,

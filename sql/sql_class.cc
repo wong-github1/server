@@ -8632,48 +8632,6 @@ error:
 
 }
 
-void THD::get_db_list(Dynamic_array<LEX_CSTRING> *db_list)
-{
-  int len;
-  const char *curr;
-  const char *token;
-  const char *end;
-  CHARSET_INFO *cs;
-  LEX_CSTRING db;
-
-  curr = token = variables.path;
-  end = curr + strlen(curr);
-  cs = system_charset_info_for_i_s;
-
-  while (curr < end)
-  {
-    len = my_ismbchar(cs, curr, end - 1);
-    if (len)
-    {
-      curr += len;
-      if (curr < end)
-        continue;
-    }
-
-    if (*curr == ',' || curr >= end || end - 1 == curr)
-    {
-      if (end - 1 == curr)
-        curr++;
-
-      db = make_string(this, token, curr);
-      db_list->append(db);
-
-      if (curr < end)
-      {
-        curr++;
-        token = curr;
-      }
-    }
-    else
-      curr++;
-  }
-}
-
 void AUTHID::copy(MEM_ROOT *mem_root, const LEX_CSTRING *user_name,
                                       const LEX_CSTRING *host_name)
 {

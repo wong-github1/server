@@ -563,7 +563,7 @@ static TABLE *open_proc_table_for_update(THD *thd)
 int
 Sp_handler::db_find_routine_aux(THD *thd,
                                 const Database_qualified_name *name,
-                                TABLE *table) const
+                                TABLE *table, bool update) const
 {
   uchar key[MAX_KEY_LENGTH];	// db, name, optional key length type
   DBUG_ENTER("db_find_routine_aux");
@@ -588,7 +588,8 @@ Sp_handler::db_find_routine_aux(THD *thd,
 
   if (table->file->ha_index_read_idx_map(table->record[0], 0, key,
                                          HA_WHOLE_KEY,
-                                         HA_READ_KEY_EXACT))
+                                         HA_READ_KEY_EXACT,
+                                         update))
     DBUG_RETURN(SP_KEY_NOT_FOUND);
 
   DBUG_RETURN(SP_OK);
@@ -2257,11 +2258,8 @@ Sp_handler::sp_find_routine_quick(THD *thd,
 
   if ((sp= sp_cache_lookup(cp, name)))
   {
-    if (unlikely(!sp_clone_and_link_routine(thd, name, sp)))
-    {
-      thd->m_parser_state= oldps;
-      DBUG_RETURN(1);
-    }
+    thd->m_parser_state= oldps;
+    DBUG_RETURN(SP_OK);
   }
 
   TABLE *table;
@@ -2276,7 +2274,7 @@ Sp_handler::sp_find_routine_quick(THD *thd,
     goto done;
   }
 
-  if ((ret= db_find_routine_aux(thd, name, table)) != SP_OK)
+  if ((ret= db_find_routine_aux(thd, name, table, false)) != SP_OK)
     goto done;
 
   thd->commit_whole_transaction_and_close_tables();
