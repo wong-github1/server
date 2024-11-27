@@ -283,7 +283,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -317,7 +317,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -354,7 +354,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -386,7 +386,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -421,7 +421,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -434,7 +434,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test2, Pack: pack, Rt: func';
 END;
@@ -478,7 +478,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -497,7 +497,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test2, Pack: pack, Rt: func';
 END;
@@ -538,7 +538,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN func_local();
 END;
@@ -593,7 +593,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN func_local();
 END;
@@ -635,7 +635,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test2, Pack: pack2, Rt: func';
 END;
@@ -647,7 +647,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN pack2.func();
 END;
@@ -665,7 +665,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack2, Rt: func';
 END;
@@ -710,7 +710,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test2, Pack: pack2, Rt: func';
 END;
@@ -722,7 +722,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN pack2.func();
 END;
@@ -735,7 +735,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack2, Rt: func';
 END;
@@ -772,7 +772,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -818,7 +818,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -857,7 +857,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func';
 END;
@@ -910,7 +910,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func_pub() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func_prv() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func_prv';
 
@@ -956,7 +956,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   FUNCTION func_pub() RETURNS TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack
   FUNCTION func_prv() RETURNS TEXT RETURN 'Invoke from Db: test, Pack: pack, Rt: func_prv';
 
@@ -1239,7 +1239,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1273,7 +1273,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1310,7 +1310,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1342,7 +1342,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1377,7 +1377,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1390,7 +1390,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test2, Pack: pack, Rt: proc';
 END;
@@ -1434,7 +1434,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1453,7 +1453,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test2, Pack: pack, Rt: proc';
 END;
@@ -1494,7 +1494,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() CALL proc_local;
 END;
@@ -1549,7 +1549,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() CALL proc_local;
 END;
@@ -1591,7 +1591,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   PROCEDURE proc() SELECT 'Invoke from Db: test2, Pack: pack2, Rt: proc';
 END;
@@ -1603,7 +1603,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() CALL pack2.proc;
 END;
@@ -1621,7 +1621,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack2, Rt: proc';
 END;
@@ -1666,7 +1666,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   PROCEDURE proc() SELECT 'Invoke from Db: test2, Pack: pack2, Rt: proc';
 END;
@@ -1678,7 +1678,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() CALL pack2.proc;
 END;
@@ -1691,7 +1691,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack2, Rt: proc';
 END;
@@ -1728,7 +1728,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1774,7 +1774,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1813,7 +1813,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc';
 END;
@@ -1867,7 +1867,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc_pub();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc_prv() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc_prv';
 
@@ -1914,7 +1914,7 @@ DELIMITER $$;
 CREATE PACKAGE pack
   PROCEDURE proc_pub();
 END;
-
+$$
 CREATE PACKAGE BODY pack
   PROCEDURE proc_prv() SELECT 'Invoke from Db: test, Pack: pack, Rt: proc_prv';
 
@@ -2297,7 +2297,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2334,7 +2334,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2374,7 +2374,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2409,7 +2409,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2447,7 +2447,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2463,7 +2463,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2510,7 +2510,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2532,7 +2532,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2583,7 +2583,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2655,7 +2655,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2707,7 +2707,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2722,7 +2722,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2743,7 +2743,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2791,7 +2791,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2806,7 +2806,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2822,7 +2822,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2862,7 +2862,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2918,7 +2918,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -2967,7 +2967,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   FUNCTION func() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func() RETURN TEXT AS
   BEGIN
@@ -3042,7 +3042,7 @@ $$
 CREATE PACKAGE pack AS
   FUNCTION func_pub() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func_prv() RETURN TEXT AS
   BEGIN
@@ -3106,7 +3106,7 @@ $$
 CREATE PACKAGE pack AS
   FUNCTION func_pub() RETURN TEXT;
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   FUNCTION func_prv() RETURN TEXT AS
   BEGIN
@@ -3479,7 +3479,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3516,7 +3516,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3556,7 +3556,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3591,7 +3591,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3629,7 +3629,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3645,7 +3645,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3692,7 +3692,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3714,7 +3714,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3764,7 +3764,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3834,7 +3834,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3885,7 +3885,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   PROCEDURE proc() AS
   BEGIN
@@ -3900,7 +3900,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -3921,7 +3921,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   PROCEDURE proc() AS
   BEGIN
@@ -3969,7 +3969,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   PROCEDURE proc() AS
   BEGIN
@@ -3984,7 +3984,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -4000,7 +4000,7 @@ DELIMITER $$;
 CREATE PACKAGE pack2 AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack2 AS
   PROCEDURE proc() AS
   BEGIN
@@ -4040,7 +4040,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -4095,7 +4095,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -4143,7 +4143,7 @@ DELIMITER $$;
 CREATE PACKAGE pack AS
   PROCEDURE proc();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc() AS
   BEGIN
@@ -4215,7 +4215,7 @@ $$
 CREATE PACKAGE pack AS
   PROCEDURE proc_pub();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc_prv() AS
   BEGIN
@@ -4277,7 +4277,7 @@ $$
 CREATE PACKAGE pack AS
   PROCEDURE proc_pub();
 END;
-
+$$
 CREATE PACKAGE BODY pack AS
   PROCEDURE proc_prv() AS
   BEGIN
