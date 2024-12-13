@@ -716,6 +716,19 @@ protected:
 };
 
 
+class Create_func_dbms_output_put_line : public Create_func_arg1 // kokseng
+{
+public:
+  Item *create_1_arg(THD *thd, Item *arg1) override;
+
+  static Create_func_dbms_output_put_line s_singleton;
+
+protected:
+  Create_func_dbms_output_put_line() = default;
+  ~Create_func_dbms_output_put_line() override = default;
+};  // kokseng
+
+
 class Create_func_degrees : public Create_func_arg1
 {
 public:
@@ -3776,6 +3789,15 @@ Create_func_dayofyear::create_1_arg(THD *thd, Item *arg1)
 }
 
 
+Create_func_dbms_output_put_line Create_func_dbms_output_put_line::s_singleton; // kokseng
+
+Item* // kokseng
+Create_func_dbms_output_put_line::create_1_arg(THD *thd, Item *arg1)
+{
+  return new (thd->mem_root) Item_func_dbms_output_put_line(thd, arg1);
+} // kokseng
+
+
 Create_func_degrees Create_func_degrees::s_singleton;
 
 Item*
@@ -6403,6 +6425,8 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("DAYOFMONTH") }, BUILDER(Create_func_dayofmonth)},
   { { STRING_WITH_LEN("DAYOFWEEK") }, BUILDER(Create_func_dayofweek)},
   { { STRING_WITH_LEN("DAYOFYEAR") }, BUILDER(Create_func_dayofyear)},
+  // { { STRING_WITH_LEN("DBMS_OUTPUT.PUT_LINE") }, BUILDER(Create_func_dbms_output_put_line)},  // kokseng
+  { { STRING_WITH_LEN("DPUT_LINE") }, BUILDER(Create_func_dbms_output_put_line)},  // kokseng
   { { STRING_WITH_LEN("DECODE") }, BUILDER(Create_func_decode)},
   { { STRING_WITH_LEN("DEGREES") }, BUILDER(Create_func_degrees)},
   { { STRING_WITH_LEN("DECODE_HISTOGRAM") }, BUILDER(Create_func_decode_histogram)},

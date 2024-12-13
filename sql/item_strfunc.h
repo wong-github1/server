@@ -473,6 +473,43 @@ public:
 };
 
 
+class Item_func_dbms_output_put_line : public Item_str_func  // kokseng
+{
+public:
+  String ooutput;
+  // static Dynamic_array<String> sbuffer;
+  Item_func_dbms_output_put_line(THD *thd, Item *arg1);
+  // Item_func_dbms_output_put_line(THD *thd, Item *arg1) : Item_str_func(thd, arg1), ooutput(14)
+  // {
+  //   ooutput.set_ascii("PUT LINE test",13);
+  // }
+  bool fix_length_and_dec(THD *thd) override
+  {
+    max_length=32767;
+    set_maybe_null();
+    return FALSE;
+  }
+  String *val_str(String *par) override;
+  // String *val_str(String *par) override
+  // {
+  //   return &ooutput;
+  // }
+  LEX_CSTRING func_name_cstring() const override
+  {
+    static LEX_CSTRING name= {STRING_WITH_LEN("dbms_output.put_line")};
+    return name;
+  }
+  // bool check_vcol_func_processor(void *arg) override
+  // {
+  //   return mark_unsupported_function(func_name(), "()", arg, VCOL_NON_DETERMINISTIC);
+  // }
+  Item *do_get_copy(THD *thd) const override
+  {
+    return get_item_copy<Item_func_dbms_output_put_line>(thd, this);
+  }
+};  // kokseng
+
+
 class Item_func_reverse :public Item_str_func
 {
   String tmp_value;

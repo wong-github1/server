@@ -121,6 +121,7 @@ SET (SQL_SOURCE
                protocol.cc records.cc repl_failsafe.cc rpl_filter.cc
                session_tracker.cc
                sql_path.cc
+               pack_dbms_output.cc
                set_var.cc
                slave.cc sp.cc sp_cache.cc sp_head.cc sp_pcontext.cc
                sp_rcontext.cc spatial.cc sql_acl.cc sql_analyse.cc sql_base.cc

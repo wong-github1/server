@@ -12291,3 +12291,5 @@ ER_VECTOR_FORMAT_INVALID
         eng "Invalid vector format at offset: %d for '%-.100s'. Must be a valid JSON array of numbers."
 ER_INVALID_SCHEMA_NAME_LIST_SPEC
         eng "Invalid schema list specification"
+ER_FOR_PACK_DBMS_OUTPUT
+        eng "DBMS_OUTPUT"

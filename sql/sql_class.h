@@ -51,6 +51,7 @@
 #include <mysql_com_server.h>
 #include "session_tracker.h"
 #include "sql_path.h"
+#include "pack_dbms_output.h"  // kokseng
 #include "backup.h"
 #include "xa.h"
 #include "ddl_log.h"                            /* DDL_LOG_STATE */
@@ -5618,6 +5619,7 @@ private:
 public:
   Session_tracker session_tracker;
   Sql_path sql_path;
+  Pack_dbms_output pack_dbms_output;  // kokseng
   /*
     Flag, mutex and condition for a thread to wait for a signal from another
     thread.

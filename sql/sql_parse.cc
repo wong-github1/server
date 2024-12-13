@@ -1415,6 +1415,12 @@ dispatch_command_return do_command(THD *thd, bool blocking)
 resume:
   return_value= dispatch_command(command, thd, packet+1,
                                  (uint) (packet_length-1), blocking);
+  // if (thd->pack_dbms_output.m_buffer.elements() > 0) // kokseng
+  // {
+  //   thd->get_stmt_da()->reset_diagnostics_area(); // kokseng
+  //   my_message(ER_INVALID_SCHEMA_NAME_LIST_SPEC, "strBuf test test", MYF(0));
+  // } // kokseng
+
   if (return_value == DISPATCH_COMMAND_WOULDBLOCK)
   {
     /* Save current state, and resume later.*/
@@ -1900,7 +1906,14 @@ dispatch_command_return dispatch_command(enum enum_server_command command, THD *
     }
     else
 #endif /* WITH_WSREP */
+      thd->pack_dbms_output.put_line_start(); // kokseng
       mysql_parse(thd, thd->query(), thd->query_length(), &parser_state);
+      // if (thd->pack_dbms_output.m_buffer.elements() > 0) // kokseng
+      // {
+      //   thd->get_stmt_da()->reset_diagnostics_area(); // kokseng
+      //   my_message(ER_INVALID_SCHEMA_NAME_LIST_SPEC, "strBuf test test", MYF(0));
+      // } // kokseng
+      thd->pack_dbms_output.put_line_end(thd); // kokseng
 
     while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
            ! thd->is_error())
@@ -3993,6 +4006,23 @@ mysql_execute_command(THD *thd, bool is_called_from_prepared_stmt)
       goto error;
 
     res= mysql_do(thd, *lex->insert_list);
+
+#if 0
+    { // kokseng
+      // static int ii = 1;
+      // char strBuf[32];
+      // sprintf(strBuf, "\nddputput %d", ii);
+      // my_message(ER_NO_DB_ERROR, strBuf, MYF(0));
+      // ii++;
+
+      // my_message(ER_NO_DB_ERROR, "strBuf", MYF(0));
+      thd->get_stmt_da()->reset_diagnostics_area(); // kokseng
+      my_message(ER_INVALID_SCHEMA_NAME_LIST_SPEC, "strBuf", MYF(0));
+
+      // my_error(ER_INVALID_SCHEMA_NAME_LIST_SPEC, MYF(0), "strBuf2");
+    } // kokseng
+#endif
+
     break;
 
   case SQLCOM_EMPTY_QUERY:

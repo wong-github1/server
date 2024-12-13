@@ -3481,6 +3481,7 @@ public:
   longlong val_int_result() override;
   bool val_bool_result() override;
   String *str_result(String *str) override;
+  const String *str_result() const { return save_result.vstr; }  // kokseng
   my_decimal *val_decimal_result(my_decimal *) override;
   bool is_null_result() override;
   bool update_hash(void *ptr, size_t length, const Type_handler *th,

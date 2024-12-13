@@ -73,6 +73,14 @@
 #include "sql_update.h"
 #include "sql_delete.h"
 
+// extern int MYSQLdebug;  // kokseng
+// MYSQLdebug = 1;         // kokseng
+// int MYSQLdebug = 1;     // kokseng
+
+// extern int yydebug;     // kokseng
+// yydebug = 1;            // kokseng
+
+
 /* this is to get the bison compilation windows warnings out */
 #ifdef _MSC_VER
 /* warning C4065: switch statement contains 'default' but no 'case' labels */
@@ -119,8 +127,10 @@ int yylex(void *yylval, void *yythd);
   do { my_error A; MYSQL_YYABORT; } while(0)
 
 #ifndef DBUG_OFF
+// asdf; // kokseng
 #define YYDEBUG 1
 #else
+// qwer; // kokseng
 #define YYDEBUG 0
 #endif
 
@@ -8749,6 +8759,7 @@ opt_ignore_leaves:
 select:
           query_expression_no_with_clause
           {
+            printf("~~~~ select 00\n"); // kokseng
             if (Lex->push_select($1->fake_select_lex ?
                                  $1->fake_select_lex :
                                  $1->first_select()))
@@ -8949,8 +8960,10 @@ query_expression:
 */
 
 query_expression_no_with_clause:
-          query_expression_body_ext { $$= $1; }
-        | query_expression_body_ext_parens { $$= $1; }
+        //   query_expression_body_ext { $$= $1; } // kokseng org
+        // | query_expression_body_ext_parens { $$= $1; } // kokseng org
+          query_expression_body_ext { printf("~~~~ query_expression_no_with_clause 00\n"); $$= $1; }  // kokseng
+        | query_expression_body_ext_parens { printf("~~~~ query_expression_no_with_clause 01\n"); $$= $1; }  // kokseng
         ;
 
 /*
@@ -8966,6 +8979,7 @@ query_expression_no_with_clause:
 query_expression_body_ext:
           query_expression_body
           {
+            printf("~~~~ query_expression_body_ext 00\n");  // kokseng
             if ($1->first_select()->next_select())
             {
               if (Lex->parsed_multi_operand_query_expression_body($1))
@@ -8981,6 +8995,7 @@ query_expression_body_ext:
           }
         | query_expression_body_ext_parens
           {
+            printf("~~~~ query_expression_body_ext 01\n");  // kokseng
             Lex->push_select(!$1->first_select()->next_select() ?
                                $1->first_select() : $1->fake_select_lex);
           }
@@ -9564,6 +9579,7 @@ expr:
               MYSQL_YYABORT;
           }
         | boolean_test %prec PREC_BELOW_NOT
+          { printf("~~~~ expr: last: boolean_test\n"); } // kokseng
         ;
 
 boolean_test:
@@ -9634,6 +9650,7 @@ boolean_test:
               MYSQL_YYABORT;
           }
         | predicate %prec BETWEEN_SYM
+          { printf("~~~~ boolean_test: last: predicate\n"); } // kokseng
         ;
 
 predicate:
@@ -9749,6 +9766,7 @@ predicate:
               MYSQL_YYABORT;
           }
         | bit_expr %prec PREC_BELOW_NOT
+          { printf("~~~~ predicate: last: bit_expr\n"); } // kokseng
         ;
 
 bit_expr:
@@ -9863,6 +9881,7 @@ bit_expr:
               MYSQL_YYABORT;
           }
         | mysql_concatenation_expr %prec '^'
+          { printf("~~~~ bit_expr: last: mysql_concatenation_expr\n"); } // kokseng
         ;
 
 or:
@@ -10187,10 +10206,14 @@ column_default_non_parenthesized_expr:
 
 primary_expr:
           column_default_non_parenthesized_expr
+          { printf("~~~~ primary_expr: 00\n"); } // kokseng
         | explicit_cursor_attr
-        | '(' parenthesized_expr ')' { $$= $2; }
+          { printf("~~~~ primary_expr: 01\n"); } // kokseng
+        // | '(' parenthesized_expr ')' { $$= $2; }  // kokseng org
+        | '(' parenthesized_expr ')' { printf("~~~~ primary_expr: 02\n"); $$= $2; }  // kokseng
         | subquery
           {
+          { printf("~~~~ primary_expr: 03\n"); } // kokseng
             if (!($$= Lex->create_item_query_expression(thd, $1->master_unit())))
               MYSQL_YYABORT;
           }
@@ -10198,8 +10221,10 @@ primary_expr:
 
 string_factor_expr:
           primary_expr
+          { printf("~~~~ string_factor_expr: first\n"); } // kokseng
         | string_factor_expr COLLATE_SYM collation_name
           {
+            printf("~~~~ string_factor_expr: last\n");  // kokseng
             if (unlikely(!($$= new (thd->mem_root)
                                Item_func_set_collation(thd, $1, $3))))
               MYSQL_YYABORT;
@@ -10208,8 +10233,10 @@ string_factor_expr:
 
 simple_expr:
           string_factor_expr %prec NEG
+          { printf("~~~~ simple_expr: 00\n"); } // kokseng
         | BINARY simple_expr
           {
+            printf("~~~~ simple_expr: 01\n");  // kokseng
             Type_cast_attributes at(&my_charset_bin);
             if (unlikely(!($$= type_handler_long_blob.create_typecast_item(thd, $2, at))))
               MYSQL_YYABORT;
@@ -10240,8 +10267,10 @@ simple_expr:
 
 mysql_concatenation_expr:
           simple_expr
+          { printf("~~~~ mysql_concatenation_expr: first\n"); } // kokseng
         | mysql_concatenation_expr MYSQL_CONCAT_SYM simple_expr
           {
+          { printf("~~~~ mysql_concatenation_expr: last\n"); } // kokseng
             $$= new (thd->mem_root) Item_func_concat(thd, $1, $3);
             if (unlikely($$ == NULL))
               MYSQL_YYABORT;
@@ -10778,6 +10807,7 @@ function_call_conflict:
 function_call_generic:
           ident_func '('
           {
+            printf("~~~~ function_call_generic 00\n"); // kokseng
 #ifdef HAVE_DLOPEN
             udf_func *udf= 0;
             LEX *lex= Lex;
@@ -11582,11 +11612,13 @@ opt_expr_list:
 expr_list:
           expr
           {
+            printf("~~~~ expr_list first\n"); // kokseng
             if (unlikely(!($$= List<Item>::make(thd->mem_root, $1))))
               MYSQL_YYABORT;
           }
         | expr_list ',' expr
           {
+            printf("~~~~ expr_list last\n"); // kokseng
             $1->push_back($3, thd->mem_root);
             $$= $1;
           }
@@ -13233,6 +13265,7 @@ do:
           }
           expr_list
           {
+            printf("~~~~ do\n"); // kokseng
             Lex->insert_list= $3;
             Lex->pop_select(); //main select
             if (Lex->check_cte_dependencies_and_resolve_references())
