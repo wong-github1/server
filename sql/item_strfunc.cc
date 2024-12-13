@@ -6315,3 +6315,24 @@ longlong Item_func_wsrep_sync_wait_upto::val_int()
 }
 
 #endif /* WITH_WSREP */
+
+// Dynamic_array<String> Item_func_dbms_output_put_line::sbuffer(PSI_INSTRUMENT_MEM);  // kokseng
+
+Item_func_dbms_output_put_line::Item_func_dbms_output_put_line(THD *thd, Item *arg1) :
+  // Item_str_func(thd, arg1), ooutput(14), sbuffer(PSI_INSTRUMENT_MEM)  // kokseng
+  Item_str_func(thd, arg1), ooutput(14)  // kokseng
+{
+  ooutput.set_ascii("PUT LINE test", 13);
+}  // kokseng
+
+String *Item_func_dbms_output_put_line::val_str(String *par)  // kokseng
+{
+  String *message;
+  message= args[0]->val_str(par);
+
+  // sbuffer.append(*message);
+
+  // return &ooutput;
+  // return NULL;
+  return message;
+}  // kokseng

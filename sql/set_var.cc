@@ -745,8 +745,55 @@ int sql_set_variables(THD *thd, List<set_var_base> *var_list, bool free)
   if (unlikely(was_error) || likely(!(error= MY_TEST(thd->is_error()))))
   {
     it.rewind();
-    while ((var= it++))
-      error|= var->update(thd);         // Returns 0, -1 or 1
+    // while ((var= it++))                                        // kokseng org
+    //   error|= var->update(thd);         // Returns 0, -1 or 1  // kokseng org
+    while ((var= it++))  // kokseng
+    { // kokseng
+      error|= var->update(thd);
+      if (!error)
+      {
+        set_var_user *svu = dynamic_cast<set_var_user *>(var);
+        if (svu)
+        {
+          const Item_func_set_user_var *user_var_item = svu->get_item();
+          // if (user_var_item && user_var_item->args[0])
+          if (user_var_item)
+          {
+            Item **item = user_var_item->arguments();
+            if (item && item[0])
+            {
+              const Item_func_dbms_output_put_line *item_dbms_output = dynamic_cast<Item_func_dbms_output_put_line *>(item[0]);
+              if (item_dbms_output)
+              {
+                LEX_CSTRING name = item_dbms_output->func_name_cstring();
+                if (strncmp(name.str, "dbms_output.put_line", name.length) == 0)
+                {
+                  // int i = 0;
+
+                  // thd->pack_dbms_output.put_line(user_var_item->save_result->vstr);
+                  thd->pack_dbms_output.put_line(thd, user_var_item->str_result());
+                  // i++;
+                  // i++;
+                  // printf("ks i = %d\n", i);
+                }
+              }
+            }
+            /*
+            LEX_CSTRING name = user_var_item->args[0]->func_name_cstring();
+            if (strncmp(name.str, "dbms_output.put_line", name.length) == 0)
+            {
+              int i = 0;
+
+              thd->pack_dbms_output.put_line(user_var_item->save_result->vstr);
+              i++;
+              i++;
+              printf("ks i = %d\n", i);
+            }
+            */
+          }
+        }
+      }
+    } // kokseng
   }
 
 err:

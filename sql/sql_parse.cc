@@ -1900,7 +1900,9 @@ dispatch_command_return dispatch_command(enum enum_server_command command, THD *
     }
     else
 #endif /* WITH_WSREP */
+      thd->pack_dbms_output.put_line_start(); // kokseng
       mysql_parse(thd, thd->query(), thd->query_length(), &parser_state);
+      thd->pack_dbms_output.put_line_end(thd); // kokseng
 
     while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
            ! thd->is_error())

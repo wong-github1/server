@@ -346,6 +346,7 @@ public:
   int check(THD *thd) override;
   int update(THD *thd) override;
   int light_check(THD *thd) override;
+  const Item_func_set_user_var *get_item() const { return user_var_item; }  // kokseng
 };
 
 /* For SET PASSWORD */
