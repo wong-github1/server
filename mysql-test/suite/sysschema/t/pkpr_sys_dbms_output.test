@@ -1,0 +1,32 @@
+-- source include/not_embedded.inc
+# Tests for sys schema
+# Verify the package sys.DBMS_OUTPUT perfoms as expected
+
+SET SQL_MODE = ORACLE;
+
+USE sys;
+
+DELIMITER $$;
+CREATE PROCEDURE proc AS
+BEGIN
+  SELECT 'Invoke from Db: sys, Rt: proc, aaaa';
+  DBMS_OUTPUT.PUT_LINE('hello world');
+  SELECT 'Invoke from Db: sys, Rt: proc, bbbb';
+  DBMS_OUTPUT.PUT_LINE('deadpool wolverine');
+  SELECT 'Invoke from Db: sys, Rt: proc, cccc';
+  DBMS_OUTPUT.PUT_LINE('i know what you did last summer');
+END;
+$$
+DELIMITER ;$$
+
+call DBMS_OUTPUT.PUT_LINE('asdf');
+
+call DBMS_OUTPUT.ENABLE;
+
+--error ER_FOR_PACK_DBMS_OUTPUT
+call DBMS_OUTPUT.PUT_LINE('asdf');
+
+--error ER_FOR_PACK_DBMS_OUTPUT
+call proc;
+
+DROP PROCEDURE proc;

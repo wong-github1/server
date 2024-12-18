@@ -127,6 +127,8 @@ sys_get_config	FUNCTION
 version_major	FUNCTION
 version_minor	FUNCTION
 version_patch	FUNCTION
+DBMS_OUTPUT	PACKAGE
+DBMS_OUTPUT	PACKAGE BODY
 create_synonym_db	PROCEDURE
 diagnostics	PROCEDURE
 execute_prepared_stmt	PROCEDURE

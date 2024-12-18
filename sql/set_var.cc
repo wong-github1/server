@@ -746,7 +746,33 @@ int sql_set_variables(THD *thd, List<set_var_base> *var_list, bool free)
   {
     it.rewind();
     while ((var= it++))
-      error|= var->update(thd);         // Returns 0, -1 or 1
+    {
+      error|= var->update(thd);
+      if (!error)
+      {
+        set_var_user *svu = dynamic_cast<set_var_user *>(var);
+        if (svu)
+        {
+          const Item_func_set_user_var *user_var_item = svu->get_item();
+          if (user_var_item)
+          {
+            Item **item = user_var_item->arguments();
+            if (item && item[0])
+            {
+              const Item_func_dbms_output_put_line *item_dbms_output = dynamic_cast<Item_func_dbms_output_put_line *>(item[0]);
+              if (item_dbms_output)
+              {
+                LEX_CSTRING name = item_dbms_output->func_name_cstring();
+                if (strncmp(name.str, "dbms_output.put_line", name.length) == 0)
+                {
+                  thd->pack_dbms_output.put_line(thd, user_var_item->str_result());
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
 err:

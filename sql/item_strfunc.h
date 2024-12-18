@@ -473,6 +473,29 @@ public:
 };
 
 
+class Item_func_dbms_output_put_line : public Item_str_func
+{
+public:
+  Item_func_dbms_output_put_line(THD *thd, Item *arg1);
+  bool fix_length_and_dec(THD *thd) override
+  {
+    max_length=32767;
+    set_maybe_null();
+    return FALSE;
+  }
+  String *val_str(String *par) override;
+  LEX_CSTRING func_name_cstring() const override
+  {
+    static LEX_CSTRING name= {STRING_WITH_LEN("dbms_output.put_line")};
+    return name;
+  }
+  Item *do_get_copy(THD *thd) const override
+  {
+    return get_item_copy<Item_func_dbms_output_put_line>(thd, this);
+  }
+};
+
+
 class Item_func_reverse :public Item_str_func
 {
   String tmp_value;

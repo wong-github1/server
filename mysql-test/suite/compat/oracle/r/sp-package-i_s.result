@@ -19,6 +19,7 @@ $$
 SELECT routine_name, routine_type, routine_definition
 FROM information_schema.routines
 WHERE routine_type LIKE 'PACKAGE%'
+AND routine_schema = 'test'
 ORDER BY routine_type;
 routine_name	pkg1
 routine_type	PACKAGE
@@ -52,6 +53,7 @@ $$
 SELECT routine_name, routine_type, routine_definition
 FROM information_schema.routines
 WHERE routine_type LIKE 'PACKAGE%'
+AND routine_schema = 'test'
 ORDER BY routine_type;
 routine_name	pkg1
 routine_type	PACKAGE

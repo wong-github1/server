@@ -28,6 +28,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/functions/sys_get_config.sql
 ${CMAKE_CURRENT_SOURCE_DIR}/functions/version_major.sql
 ${CMAKE_CURRENT_SOURCE_DIR}/functions/version_minor.sql
 ${CMAKE_CURRENT_SOURCE_DIR}/functions/version_patch.sql
+${CMAKE_CURRENT_SOURCE_DIR}/stored_packages/dbms_output.sql
 ${CMAKE_CURRENT_SOURCE_DIR}/views/i_s/innodb_buffer_stats_by_schema.sql
 ${CMAKE_CURRENT_SOURCE_DIR}/views/i_s/x_innodb_buffer_stats_by_schema.sql
 ${CMAKE_CURRENT_SOURCE_DIR}/views/i_s/innodb_buffer_stats_by_table.sql

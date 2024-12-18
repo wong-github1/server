@@ -715,6 +715,20 @@ protected:
 };
 
 
+
+class Create_func_dbms_output_put_line : public Create_func_arg1
+{
+public:
+  Item *create_1_arg(THD *thd, Item *arg1) override;
+
+  static Create_func_dbms_output_put_line s_singleton;
+
+protected:
+  Create_func_dbms_output_put_line() = default;
+  ~Create_func_dbms_output_put_line() override = default;
+};
+
+
 class Create_func_degrees : public Create_func_arg1
 {
 public:
@@ -3751,6 +3765,15 @@ Create_func_dayofyear::create_1_arg(THD *thd, Item *arg1)
 }
 
 
+Create_func_dbms_output_put_line Create_func_dbms_output_put_line::s_singleton;
+
+Item*
+Create_func_dbms_output_put_line::create_1_arg(THD *thd, Item *arg1)
+{
+  return new (thd->mem_root) Item_func_dbms_output_put_line(thd, arg1);
+}
+
+
 Create_func_degrees Create_func_degrees::s_singleton;
 
 Item*
@@ -6384,6 +6407,7 @@ const Native_func_registry func_array[] =
   { { STRING_WITH_LEN("DECODE_ORACLE") }, BUILDER(Create_func_decode_oracle)},
   { { STRING_WITH_LEN("DES_DECRYPT") }, BUILDER(Create_func_des_decrypt)},
   { { STRING_WITH_LEN("DES_ENCRYPT") }, BUILDER(Create_func_des_encrypt)},
+  { { STRING_WITH_LEN("DPUT_LINE") }, BUILDER(Create_func_dbms_output_put_line)},
   { { STRING_WITH_LEN("ELT") }, BUILDER(Create_func_elt)},
   { { STRING_WITH_LEN("ENCODE") }, BUILDER(Create_func_encode)},
   { { STRING_WITH_LEN("ENCRYPT") }, BUILDER(Create_func_encrypt)},

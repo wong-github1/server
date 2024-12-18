@@ -1,0 +1,29 @@
+SET SQL_MODE = ORACLE;
+USE sys;
+CREATE PROCEDURE proc AS
+BEGIN
+SELECT 'Invoke from Db: sys, Rt: proc, aaaa';
+DBMS_OUTPUT.PUT_LINE('hello world');
+SELECT 'Invoke from Db: sys, Rt: proc, bbbb';
+DBMS_OUTPUT.PUT_LINE('deadpool wolverine');
+SELECT 'Invoke from Db: sys, Rt: proc, cccc';
+DBMS_OUTPUT.PUT_LINE('i know what you did last summer');
+END;
+$$
+call DBMS_OUTPUT.PUT_LINE('asdf');
+call DBMS_OUTPUT.ENABLE;
+call DBMS_OUTPUT.PUT_LINE('asdf');
+ERROR HY000: 
+asdf
+call proc;
+Invoke from Db: sys, Rt: proc, aaaa
+Invoke from Db: sys, Rt: proc, aaaa
+Invoke from Db: sys, Rt: proc, bbbb
+Invoke from Db: sys, Rt: proc, bbbb
+Invoke from Db: sys, Rt: proc, cccc
+Invoke from Db: sys, Rt: proc, cccc
+ERROR HY000: 
+hello world
+deadpool wolverine
+i know what you did last summer
+DROP PROCEDURE proc;

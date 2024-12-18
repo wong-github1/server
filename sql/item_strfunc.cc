@@ -6314,3 +6314,17 @@ longlong Item_func_wsrep_sync_wait_upto::val_int()
 }
 
 #endif /* WITH_WSREP */
+
+
+Item_func_dbms_output_put_line::Item_func_dbms_output_put_line(THD *thd, Item *arg1) :
+  Item_str_func(thd, arg1)
+{
+}
+
+String *Item_func_dbms_output_put_line::val_str(String *par)
+{
+  String *message;
+  message= args[0]->val_str(par);
+
+  return message;
+}
